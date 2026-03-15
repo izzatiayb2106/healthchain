@@ -1,0 +1,21 @@
+{
+  "caDid": null,
+  "systemAdminWallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+  "doctorRequests": [],
+  "identities": [
+    {
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "role": "admin",
+      "createdAt": "2026-03-09T07:00:22.099Z",
+      "updatedAt": "2026-03-09T07:03:41.831Z"
+    },
+    {
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "role": "doctor",
+      "createdAt": "2026-03-09T07:14:29.012Z",
+      "updatedAt": "2026-03-09T07:15:00.096Z"
+    }
+  ]
+}
