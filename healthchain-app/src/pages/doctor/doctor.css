@@ -37,6 +37,73 @@
     margin-bottom: 16px;
 }
 
+.doctor-error {
+    color: #b00020;
+    background: #fff4f6;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.doctor-onboarding {
+    margin-bottom: 18px;
+    padding: 14px;
+    border: 1px solid #dbe8ff;
+    border-radius: 10px;
+    background: #f6faff;
+}
+
+.doctor-onboarding h2 {
+    margin: 0 0 6px 0;
+    color: #1e5ea8;
+}
+
+.doctor-onboarding p {
+    margin: 0 0 10px 0;
+    color: #365066;
+}
+
+.doctor-onboarding-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.doctor-onboarding-form label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #34495e;
+}
+
+.doctor-onboarding-form input {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #c9d8ea;
+    font-size: 0.95rem;
+}
+
+.doctor-inline-error {
+    color: #b00020;
+    font-size: 0.9rem;
+}
+
+.avatar-preview-wrap {
+    margin-top: 8px;
+}
+
+.avatar-preview {
+    width: 78px;
+    height: 78px;
+    border-radius: 999px;
+    object-fit: cover;
+    border: 2px solid #d7e5f8;
+    background: #f4f8fe;
+}
+
+.doctor-profile-actions {
+    margin-top: 12px;
+}
+
 .appointments {
     margin-bottom: 16px;
 }

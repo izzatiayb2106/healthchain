@@ -1,0 +1,17 @@
+{
+  "profiles": [
+    {
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "displayName": "Omar Suleiman",
+      "specialty": "Internal Medicine",
+      "hospitalOrClinic": "Hospital Universiti Sains Malaysia",
+      "licenseNumber": "",
+      "avatarUrl": "",
+      "legalName": "",
+      "legalNameVerified": false,
+      "createdAt": "2026-03-16T04:33:46.522Z",
+      "updatedAt": "2026-03-16T04:33:46.522Z"
+    }
+  ]
+}

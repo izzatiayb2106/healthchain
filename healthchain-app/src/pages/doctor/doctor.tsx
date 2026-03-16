@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import axios from 'axios';
+import { ethers } from 'ethers';
 import './doctor.css';
 
 //type Appointment = { id: number; time: string; patient: string; done?: boolean };
@@ -17,6 +19,20 @@ type VaccinationCertificate = {
     nextDoseDate: string;
     notes: string;
     createdAt: string;
+};
+
+type DoctorProfile = {
+    did: string;
+    wallet: string;
+    displayName: string;
+    specialty: string;
+    hospitalOrClinic: string;
+    licenseNumber: string;
+    avatarUrl: string;
+    legalName: string;
+    legalNameVerified: boolean;
+    createdAt: string;
+    updatedAt: string;
 };
 
 const initialFormState = {
@@ -42,9 +58,119 @@ const DoctorDashboard: React.FC = () => {
     const [vaccineForm, setVaccineForm] = useState(initialFormState);
     const [certificates, setCertificates] = useState<VaccinationCertificate[]>([]);
     const [loading, setLoading] = useState(false);
+    const [profile, setProfile] = useState<DoctorProfile | null>(null);
+    const [profileLoading, setProfileLoading] = useState(true);
+    const [profileError, setProfileError] = useState<string | null>(null);
+    const [showOnboarding, setShowOnboarding] = useState(false);
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [showEditProfile, setShowEditProfile] = useState(false);
+    const [savingEditProfile, setSavingEditProfile] = useState(false);
+    const [onboardingForm, setOnboardingForm] = useState({
+        displayName: '',
+        specialty: '',
+        hospitalOrClinic: '',
+        licenseNumber: '',
+        avatarUrl: '',
+    });
+    const [editProfileForm, setEditProfileForm] = useState({
+        displayName: '',
+        specialty: '',
+        hospitalOrClinic: '',
+        licenseNumber: '',
+        avatarUrl: '',
+    });
+    const [onboardingAvatarPreviewError, setOnboardingAvatarPreviewError] = useState(false);
+    const [editAvatarPreviewError, setEditAvatarPreviewError] = useState(false);
+
+    const isValidAvatarUrl = (value: string) => {
+        if (!value.trim()) return true;
+        try {
+            const parsed = new URL(value.trim());
+            return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch {
+            return false;
+        }
+    };
+
+    const hydrateProfileForms = (loadedProfile: DoctorProfile) => {
+        const next = {
+            displayName: loadedProfile.displayName || loadedProfile.legalName || '',
+            specialty: loadedProfile.specialty || '',
+            hospitalOrClinic: loadedProfile.hospitalOrClinic || '',
+            licenseNumber: loadedProfile.licenseNumber || '',
+            avatarUrl: loadedProfile.avatarUrl || '',
+        };
+        setOnboardingForm(next);
+        setEditProfileForm(next);
+        setOnboardingAvatarPreviewError(false);
+        setEditAvatarPreviewError(false);
+    };
+
+    const buildAuthHeaders = async () => {
+        const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
+        if (!wallet) {
+            throw new Error('No wallet found. Please log in again.');
+        }
+
+        if (!(window as any).ethereum) {
+            throw new Error('MetaMask is required to authenticate this action.');
+        }
+
+        const provider = new ethers.BrowserProvider((window as any).ethereum);
+        await provider.send('eth_requestAccounts', []);
+        const signer = await provider.getSigner();
+        const activeWallet = (await signer.getAddress()).toLowerCase();
+        if (activeWallet !== wallet) {
+            throw new Error('Please switch MetaMask to the same wallet used at login.');
+        }
+
+        const message = `Doctor profile auth for ${wallet} at ${new Date().toISOString()}`;
+        const signature = await signer.signMessage(message);
+
+        return {
+            'x-user-wallet': wallet,
+            'x-user-message': message,
+            'x-user-signature': signature,
+        };
+    };
+
+    const loadProfile = async () => {
+        try {
+            setProfileLoading(true);
+            setProfileError(null);
+
+            const headers = await buildAuthHeaders();
+            const response = await axios.get('http://localhost:3001/doctor/profile/me', { headers });
+            const loadedProfile = response.data?.profile as DoctorProfile;
+            const needsOnboarding = Boolean(response.data?.needsOnboarding);
+
+            setProfile(loadedProfile);
+            hydrateProfileForms(loadedProfile);
+            setShowOnboarding(needsOnboarding);
+            setShowEditProfile(false);
+        } catch (error: any) {
+            if (error?.response?.status === 404) {
+                setShowOnboarding(true);
+                return;
+            }
+
+            const detail = error?.response?.data?.error || error?.message || 'Failed to load doctor profile';
+            setProfileError(detail);
+        } finally {
+            setProfileLoading(false);
+        }
+    };
 
     // Fetch certificates from Firebase on component mount
     useEffect(() => {
+        const role = String(localStorage.getItem('hc_role') || '').toLowerCase();
+        if (role !== 'doctor') {
+            window.location.href = '/login';
+            return;
+        }
+
+        void loadProfile();
+
         const fetchCertificates = async () => {
             try {
                 const certificatesRef = collection(db, 'VaccinationCertificate');
@@ -63,8 +189,99 @@ const DoctorDashboard: React.FC = () => {
     }, []);
 
     const handleLogout = () => {
-        // replace with real logout flow
-        alert('Logout not implemented');
+        localStorage.removeItem('hc_wallet');
+        localStorage.removeItem('hc_did');
+        localStorage.removeItem('hc_role');
+        window.location.href = '/login';
+    };
+
+    const handleOnboardingInput = (
+        event: React.ChangeEvent<HTMLInputElement>
+    ) => {
+        const { name, value } = event.target;
+        setOnboardingForm((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleOnboardingSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (savingProfile) return;
+
+        if (!isValidAvatarUrl(onboardingForm.avatarUrl)) {
+            setProfileError('Avatar URL must start with http:// or https://');
+            return;
+        }
+
+        try {
+            setSavingProfile(true);
+            setProfileError(null);
+
+            const headers = await buildAuthHeaders();
+            const response = await axios.post(
+                'http://localhost:3001/doctor/profile/me',
+                {
+                    displayName: onboardingForm.displayName,
+                    specialty: onboardingForm.specialty,
+                    hospitalOrClinic: onboardingForm.hospitalOrClinic,
+                    licenseNumber: onboardingForm.licenseNumber,
+                    avatarUrl: onboardingForm.avatarUrl,
+                },
+                { headers }
+            );
+
+            const saved = response.data?.profile as DoctorProfile;
+            setProfile(saved);
+            hydrateProfileForms(saved);
+            setShowOnboarding(false);
+        } catch (error: any) {
+            const detail = error?.response?.data?.error || error?.message || 'Failed to save doctor profile';
+            setProfileError(detail);
+        } finally {
+            setSavingProfile(false);
+        }
+    };
+
+    const handleEditProfileInput = (
+        event: React.ChangeEvent<HTMLInputElement>
+    ) => {
+        const { name, value } = event.target;
+        setEditProfileForm((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleEditProfileSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (savingEditProfile) return;
+
+        if (!isValidAvatarUrl(editProfileForm.avatarUrl)) {
+            setProfileError('Avatar URL must start with http:// or https://');
+            return;
+        }
+
+        try {
+            setSavingEditProfile(true);
+            setProfileError(null);
+            const headers = await buildAuthHeaders();
+            const response = await axios.put(
+                'http://localhost:3001/doctor/profile/me',
+                {
+                    displayName: editProfileForm.displayName,
+                    specialty: editProfileForm.specialty,
+                    hospitalOrClinic: editProfileForm.hospitalOrClinic,
+                    licenseNumber: editProfileForm.licenseNumber,
+                    avatarUrl: editProfileForm.avatarUrl,
+                },
+                { headers }
+            );
+
+            const updated = response.data?.profile as DoctorProfile;
+            setProfile(updated);
+            hydrateProfileForms(updated);
+            setShowEditProfile(false);
+        } catch (error: any) {
+            const detail = error?.response?.data?.error || error?.message || 'Failed to update doctor profile';
+            setProfileError(detail);
+        } finally {
+            setSavingEditProfile(false);
+        }
     };
 
     const handleNewNote = () => {
@@ -120,13 +337,203 @@ const DoctorDashboard: React.FC = () => {
     return (
         <div className="doctor-dashboard">
             <header className="dd-header">
-                <h1 className="dd-title">Doctor Dashboard</h1>
+                <h1 className="dd-title">{profile?.displayName ? `Welcome, Dr. ${profile.displayName}` : 'Doctor Dashboard'}</h1>
                 <button className="btn" onClick={handleLogout}>Logout</button>
             </header>
 
+            {profileError ? <div className="doctor-error">{profileError}</div> : null}
+
+            {profileLoading ? (
+                <section className="doctor-info">
+                    <strong>Loading profile...</strong>
+                </section>
+            ) : null}
+
+            {showOnboarding ? (
+                <section className="doctor-onboarding">
+                    <h2>Complete your doctor profile</h2>
+                    <p>This one-time setup personalizes your dashboard and is linked to your DID.</p>
+                    <form onSubmit={handleOnboardingSubmit} className="doctor-onboarding-form">
+                        <label htmlFor="displayName">Display name *</label>
+                        <input
+                            id="displayName"
+                            name="displayName"
+                            type="text"
+                            value={onboardingForm.displayName}
+                            onChange={handleOnboardingInput}
+                            required
+                        />
+
+                        <label htmlFor="specialty">Specialty *</label>
+                        <input
+                            id="specialty"
+                            name="specialty"
+                            type="text"
+                            value={onboardingForm.specialty}
+                            onChange={handleOnboardingInput}
+                            placeholder="e.g. Internal Medicine"
+                            required
+                        />
+
+                        <label htmlFor="hospitalOrClinic">Hospital or clinic *</label>
+                        <input
+                            id="hospitalOrClinic"
+                            name="hospitalOrClinic"
+                            type="text"
+                            value={onboardingForm.hospitalOrClinic}
+                            onChange={handleOnboardingInput}
+                            required
+                        />
+
+                        <label htmlFor="licenseNumber">License number (optional)</label>
+                        <input
+                            id="licenseNumber"
+                            name="licenseNumber"
+                            type="text"
+                            value={onboardingForm.licenseNumber}
+                            onChange={handleOnboardingInput}
+                        />
+
+                        <label htmlFor="avatarUrl">Avatar URL (optional)</label>
+                        <input
+                            id="avatarUrl"
+                            name="avatarUrl"
+                            type="url"
+                            value={onboardingForm.avatarUrl}
+                            onChange={(event) => {
+                                setOnboardingAvatarPreviewError(false);
+                                handleOnboardingInput(event);
+                            }}
+                            placeholder="https://..."
+                        />
+
+                        {onboardingForm.avatarUrl && !isValidAvatarUrl(onboardingForm.avatarUrl) ? (
+                            <div className="doctor-inline-error">Avatar URL must start with http:// or https://</div>
+                        ) : null}
+
+                        {onboardingForm.avatarUrl && isValidAvatarUrl(onboardingForm.avatarUrl) ? (
+                            <div className="avatar-preview-wrap">
+                                {!onboardingAvatarPreviewError ? (
+                                    <img
+                                        src={onboardingForm.avatarUrl}
+                                        alt="Avatar preview"
+                                        className="avatar-preview"
+                                        onError={() => setOnboardingAvatarPreviewError(true)}
+                                    />
+                                ) : (
+                                    <div className="doctor-inline-error">Could not load this avatar image URL.</div>
+                                )}
+                            </div>
+                        ) : null}
+
+                        <button className="btn" type="submit" disabled={savingProfile}>
+                            {savingProfile ? 'Saving profile...' : 'Save profile'}
+                        </button>
+                    </form>
+                </section>
+            ) : null}
+
             <section className="doctor-info">
-                <strong>Doctor:</strong> Dr. John Doe
+                <strong>Doctor:</strong> {profile?.displayName ? `Dr. ${profile.displayName}` : 'Profile not set'}
+                {profile?.avatarUrl ? (
+                    <div className="avatar-preview-wrap">
+                        <img src={profile.avatarUrl} alt="Doctor avatar" className="avatar-preview" />
+                    </div>
+                ) : null}
+                {profile?.specialty ? <div><strong>Specialty:</strong> {profile.specialty}</div> : null}
+                {profile?.hospitalOrClinic ? <div><strong>Hospital/Clinic:</strong> {profile.hospitalOrClinic}</div> : null}
+                {profile?.legalNameVerified && profile?.legalName ? <div><strong>Verified legal name:</strong> {profile.legalName}</div> : null}
+                {!showOnboarding && profile ? (
+                    <div className="doctor-profile-actions">
+                        <button className="btn" onClick={() => setShowEditProfile((prev) => !prev)}>
+                            {showEditProfile ? 'Close Edit Profile' : 'Edit Profile'}
+                        </button>
+                    </div>
+                ) : null}
             </section>
+
+            {showEditProfile && profile ? (
+                <section className="doctor-onboarding">
+                    <h2>Edit profile</h2>
+                    <p>Update your personalized dashboard details.</p>
+                    <form onSubmit={handleEditProfileSubmit} className="doctor-onboarding-form">
+                        <label htmlFor="editDisplayName">Display name *</label>
+                        <input
+                            id="editDisplayName"
+                            name="displayName"
+                            type="text"
+                            value={editProfileForm.displayName}
+                            onChange={handleEditProfileInput}
+                            required
+                        />
+
+                        <label htmlFor="editSpecialty">Specialty *</label>
+                        <input
+                            id="editSpecialty"
+                            name="specialty"
+                            type="text"
+                            value={editProfileForm.specialty}
+                            onChange={handleEditProfileInput}
+                            required
+                        />
+
+                        <label htmlFor="editHospitalOrClinic">Hospital or clinic *</label>
+                        <input
+                            id="editHospitalOrClinic"
+                            name="hospitalOrClinic"
+                            type="text"
+                            value={editProfileForm.hospitalOrClinic}
+                            onChange={handleEditProfileInput}
+                            required
+                        />
+
+                        <label htmlFor="editLicenseNumber">License number (optional)</label>
+                        <input
+                            id="editLicenseNumber"
+                            name="licenseNumber"
+                            type="text"
+                            value={editProfileForm.licenseNumber}
+                            onChange={handleEditProfileInput}
+                        />
+
+                        <label htmlFor="editAvatarUrl">Avatar URL (optional)</label>
+                        <input
+                            id="editAvatarUrl"
+                            name="avatarUrl"
+                            type="url"
+                            value={editProfileForm.avatarUrl}
+                            onChange={(event) => {
+                                setEditAvatarPreviewError(false);
+                                handleEditProfileInput(event);
+                            }}
+                            placeholder="https://..."
+                        />
+
+                        {editProfileForm.avatarUrl && !isValidAvatarUrl(editProfileForm.avatarUrl) ? (
+                            <div className="doctor-inline-error">Avatar URL must start with http:// or https://</div>
+                        ) : null}
+
+                        {editProfileForm.avatarUrl && isValidAvatarUrl(editProfileForm.avatarUrl) ? (
+                            <div className="avatar-preview-wrap">
+                                {!editAvatarPreviewError ? (
+                                    <img
+                                        src={editProfileForm.avatarUrl}
+                                        alt="Avatar preview"
+                                        className="avatar-preview"
+                                        onError={() => setEditAvatarPreviewError(true)}
+                                    />
+                                ) : (
+                                    <div className="doctor-inline-error">Could not load this avatar image URL.</div>
+                                )}
+                            </div>
+                        ) : null}
+
+                        <button className="btn" type="submit" disabled={savingEditProfile}>
+                            {savingEditProfile ? 'Updating profile...' : 'Update profile'}
+                        </button>
+                    </form>
+                </section>
+            ) : null}
 
  {/*         <section className="appointments">
                 <h2>Today's Appointments</h2>
@@ -151,7 +558,6 @@ const DoctorDashboard: React.FC = () => {
             </section>
  */}
             <section className="actions">
-                <button className="btn" onClick={handleNewNote}>New Note</button>
                 <button className="btn" onClick={() => setShowVaccineForm(true)}>New Vaccination Certificate</button>
             </section>
 

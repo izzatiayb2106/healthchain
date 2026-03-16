@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { ensureDidForWallet } from "../services/didService";
 import { getCaDid, getIdentityByWallet, getSystemAdminWallet, setRole, upsertIdentity } from "../services/authServices";
 import { hasCredentialType, saveIssuedCredential } from "../services/credentialServices";
+import { upsertDoctorProfile } from "../services/doctorProfileService";
 
 const KNOWN_ROLES = new Set(["patient", "doctor", "verifier", "admin"]);
 
@@ -213,6 +214,14 @@ export default function authRoutes(agent: any) {
 
       await saveIssuedCredential(identity.did, matchedType, credentialJwt);
       const updated = await setRole(identity.wallet, "doctor");
+      const legalName = String(parseJwtPayload(credentialJwt)?.vc?.credentialSubject?.name || "").trim();
+      await upsertDoctorProfile({
+        did: updated.did,
+        wallet: updated.wallet,
+        legalName,
+        legalNameVerified: Boolean(legalName),
+        licenseNumber: professionalId,
+      });
 
       return res.json({
         success: true,
