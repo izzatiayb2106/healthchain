@@ -62,6 +62,72 @@
 	color: #fff;
 }
 
+.doctor-apply-card {
+	margin-bottom: 18px;
+	padding: 14px;
+	border-radius: 10px;
+	background: #f4f9ff;
+	border: 1px solid #d8eaff;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.doctor-apply-card h2 {
+	margin: 0;
+	font-size: 1.1rem;
+}
+
+.doctor-apply-card p {
+	margin: 0;
+	color: #35506b;
+}
+
+.doctor-apply-form {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 6px;
+}
+
+.doctor-apply-form label {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: #21374d;
+}
+
+.doctor-apply-form input,
+.doctor-apply-form textarea {
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid #c9dff6;
+	border-radius: 8px;
+	font-size: 0.95rem;
+	font-family: inherit;
+	background: #fff;
+}
+
+.doctor-apply-form textarea {
+	min-height: 120px;
+	resize: vertical;
+}
+
+.doctor-apply-error {
+	color: #b00020;
+	background: #fff4f6;
+	padding: 8px 10px;
+	border-radius: 8px;
+	font-size: 0.9rem;
+}
+
+.doctor-apply-success {
+	color: #0f6b2f;
+	background: #eefcf2;
+	padding: 8px 10px;
+	border-radius: 8px;
+	font-size: 0.9rem;
+}
+
 .appointment-list {
 	display: grid;
 	gap: 10px;
@@ -142,4 +208,22 @@
 	margin-top: 22px;
 	text-align: center;
 	color: #888;
+}
+
+@media (max-width: 640px) {
+	.patient-stats {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.appt-card {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 10px;
+	}
+
+	.appt-actions {
+		width: 100%;
+		justify-content: space-between;
+	}
 }

@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore'
 import { db } from '../../firebaseConfig';
 import './doctor.css';
 
-type Appointment = { id: number; time: string; patient: string; done?: boolean };
+//type Appointment = { id: number; time: string; patient: string; done?: boolean };
 
 type VaccinationCertificate = {
     id: string;
@@ -32,11 +32,11 @@ const initialFormState = {
 };
 
 const DoctorDashboard: React.FC = () => {
-    const [appointments, setAppointments] = useState<Appointment[]>([
+   /* const [appointments, setAppointments] = useState<Appointment[]>([
         { id: 1, time: '09:00', patient: 'Jane Smith' },
         { id: 2, time: '10:30', patient: 'Bob Lee' },
         { id: 3, time: '13:15', patient: 'Alice Johnson' },
-    ]);
+    ]);*/
 
     const [showVaccineForm, setShowVaccineForm] = useState(false);
     const [vaccineForm, setVaccineForm] = useState(initialFormState);
@@ -72,11 +72,11 @@ const DoctorDashboard: React.FC = () => {
         alert('Create note not implemented');
     };
 
-    const toggleDone = (id: number) => {
+  /*  const toggleDone = (id: number) => {
         setAppointments(prev =>
             prev.map(a => (a.id === id ? { ...a, done: !a.done } : a))
         );
-    };
+    };*/
 
     const handleVaccineFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -128,7 +128,7 @@ const DoctorDashboard: React.FC = () => {
                 <strong>Doctor:</strong> Dr. John Doe
             </section>
 
-            <section className="appointments">
+ {/*         <section className="appointments">
                 <h2>Today's Appointments</h2>
                 <ul className="appt-list">
                     {appointments.map(a => (
@@ -149,7 +149,7 @@ const DoctorDashboard: React.FC = () => {
                     ))}
                 </ul>
             </section>
-
+ */}
             <section className="actions">
                 <button className="btn" onClick={handleNewNote}>New Note</button>
                 <button className="btn" onClick={() => setShowVaccineForm(true)}>New Vaccination Certificate</button>

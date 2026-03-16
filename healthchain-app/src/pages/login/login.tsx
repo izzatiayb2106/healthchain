@@ -18,10 +18,9 @@ const Login: React.FC = () => {
 
   const routeByRole = (role: string) => {
     if (role === "doctor") return "/doctor";
-    if (role === "patient") return "/patient";
     if (role === "verifier") return "/verifier";
     if (role === "admin") return "/admin";
-    return "/login";
+    return "/patient";
   };
 
   const authenticate = async (address: string, signer: ethers.Signer) => {
@@ -57,16 +56,11 @@ const Login: React.FC = () => {
 
       setAccount(address);
       const authResult = await authenticate(address, signer);
-      const role = String(authResult?.role || "pending").toLowerCase();
+      const role = String(authResult?.role || "patient").toLowerCase();
 
       localStorage.setItem("hc_wallet", String(authResult?.address || address));
       localStorage.setItem("hc_did", String(authResult?.did || ""));
       localStorage.setItem("hc_role", role);
-
-      if (role === "pending") {
-        setError("Account is pending verification. Please wait for admin approval.");
-        return;
-      }
 
       navigate(routeByRole(role));
     } catch (err: any) {

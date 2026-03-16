@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
+import axios from 'axios';
+import { ethers } from 'ethers';
 import './patient.css';
+
+declare global {
+	interface Window {
+		ethereum?: any;
+	}
+}
 
 type Appointment = {
 	id: number;
@@ -9,14 +17,70 @@ type Appointment = {
 };
 
 const PatientDashboard: React.FC = () => {
+	const [showDoctorApply, setShowDoctorApply] = useState(false);
+	const [professionalId, setProfessionalId] = useState('');
+	const [credentialJwt, setCredentialJwt] = useState('');
+	const [applyError, setApplyError] = useState<string | null>(null);
+	const [applySuccess, setApplySuccess] = useState<string | null>(null);
+	const [isApplying, setIsApplying] = useState(false);
+
 	const [appointments, setAppointments] = useState<Appointment[]>([
 		{ id: 1, date: '2025-12-01', clinic: 'Downtown Clinic', status: 'upcoming' },
 		{ id: 2, date: '2025-10-15', clinic: 'Northside Hospital', status: 'completed' },
 	]);
 
 	const handleLogout = () => {
-		// replace with real logout flow
-		alert('Logout not implemented');
+		localStorage.removeItem('hc_wallet');
+		localStorage.removeItem('hc_did');
+		localStorage.removeItem('hc_role');
+		window.location.href = '/login';
+	};
+
+	const applyForDoctorAccess = async (event: React.FormEvent) => {
+		event.preventDefault();
+		if (isApplying) return;
+
+		try {
+			setIsApplying(true);
+			setApplyError(null);
+			setApplySuccess(null);
+
+			if (!window.ethereum) {
+				setApplyError('MetaMask is required to submit a verified doctor-access application.');
+				return;
+			}
+
+			if (!professionalId.trim() || !credentialJwt.trim()) {
+				setApplyError('Professional ID and Verifiable Credential are required.');
+				return;
+			}
+
+			const provider = new ethers.BrowserProvider(window.ethereum);
+			await provider.send('eth_requestAccounts', []);
+			const signer = await provider.getSigner();
+			const address = await signer.getAddress();
+			const did = localStorage.getItem('hc_did') || '';
+			const message = `Doctor access application for ${address} at ${new Date().toISOString()}`;
+			const signature = await signer.signMessage(message);
+
+			await axios.post('http://localhost:3001/auth/doctor/apply-vc', {
+				address,
+				did,
+				professionalId: professionalId.trim(),
+				credentialJwt: credentialJwt.trim(),
+				message,
+				signature,
+			});
+
+			setApplySuccess('Your credential has been verified and your Doctor role is now active. Log in again to enter the Doctor dashboard.');
+			setProfessionalId('');
+			setCredentialJwt('');
+		} catch (error: any) {
+			const details = error?.response?.data?.details || error?.response?.data?.error;
+			setApplyError(details || 'Doctor access request failed. Please verify your VC and try again.');
+		} finally {
+			setIsApplying(false);
+		}
 	};
 
 	const requestAppointment = () => {
@@ -56,6 +120,46 @@ const PatientDashboard: React.FC = () => {
 				<div className="stat">
 					<button className="btn request" onClick={requestAppointment}>Request Appointment</button>
 				</div>
+			</section>
+
+			<section className="doctor-apply-card">
+				<h2>Professional Access</h2>
+				<p>
+					Are you a medical professional? Apply for Doctor Access.
+				</p>
+				<button className="btn request" onClick={() => setShowDoctorApply(prev => !prev)}>
+					{showDoctorApply ? 'Hide Doctor Application' : 'Are you a medical professional? Apply for Doctor Access.'}
+				</button>
+
+				{showDoctorApply ? (
+					<form className="doctor-apply-form" onSubmit={applyForDoctorAccess}>
+						<label htmlFor="professionalId">Medical license or employee ID</label>
+						<input
+							id="professionalId"
+							type="text"
+							value={professionalId}
+							onChange={(event) => setProfessionalId(event.target.value)}
+							placeholder="e.g. MOH-123456"
+							required
+						/>
+
+						<label htmlFor="credentialJwt">Ministry-issued Verifiable Credential (JWT)</label>
+						<textarea
+							id="credentialJwt"
+							value={credentialJwt}
+							onChange={(event) => setCredentialJwt(event.target.value)}
+							placeholder="Paste your signed VC JWT here"
+							required
+						/>
+
+						{applyError ? <div className="doctor-apply-error">{applyError}</div> : null}
+						{applySuccess ? <div className="doctor-apply-success">{applySuccess}</div> : null}
+
+						<button type="submit" className="btn request" disabled={isApplying}>
+							{isApplying ? 'Verifying credential...' : 'Submit Doctor Access Application'}
+						</button>
+					</form>
+				) : null}
 			</section>
 
 			<section className="appointment-list">
