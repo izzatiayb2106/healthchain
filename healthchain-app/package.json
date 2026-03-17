@@ -18,8 +18,10 @@
     "@veramo/kms-local": "^6.0.0",
     "axios": "^1.13.6",
     "firebase": "^12.6.0",
+    "html5-qrcode": "^2.3.8",
     "ipfs-http-client": "^60.0.1",
     "lucide-react": "^0.554.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.9.6"

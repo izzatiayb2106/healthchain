@@ -8,7 +8,7 @@
       "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
       "role": "admin",
       "createdAt": "2026-03-09T07:00:22.099Z",
-      "updatedAt": "2026-03-16T04:34:59.308Z"
+      "updatedAt": "2026-03-17T07:46:07.146Z"
     },
     {
       "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
@@ -16,6 +16,13 @@
       "role": "doctor",
       "createdAt": "2026-03-09T07:14:29.012Z",
       "updatedAt": "2026-03-16T04:20:02.474Z"
+    },
+    {
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "role": "patient",
+      "createdAt": "2026-03-17T07:47:52.343Z",
+      "updatedAt": "2026-03-17T07:47:52.343Z"
     }
   ]
 }

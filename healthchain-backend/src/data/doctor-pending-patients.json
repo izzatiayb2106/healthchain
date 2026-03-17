@@ -1,0 +1,14 @@
+[
+  {
+    "doctorDid": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+    "doctorWallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+    "patients": [
+      {
+        "patientWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "patientDid": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "addedAt": "2026-03-17T08:44:25.563Z"
+      }
+    ],
+    "updatedAt": "2026-03-17T08:44:25.563Z"
+  }
+]

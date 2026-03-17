@@ -1,25 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '../../firebaseConfig';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
 import './doctor.css';
-
-//type Appointment = { id: number; time: string; patient: string; done?: boolean };
-
-type VaccinationCertificate = {
-    id: string;
-    patientName: string;
-    patientDob: string;
-    vaccineType: string;
-    manufacturer: string;
-    batchNumber: string;
-    doseNumber: number;
-    dateAdministered: string;
-    nextDoseDate: string;
-    notes: string;
-    createdAt: string;
-};
 
 type DoctorProfile = {
     did: string;
@@ -35,7 +17,13 @@ type DoctorProfile = {
     updatedAt: string;
 };
 
-const initialFormState = {
+type PendingPatient = {
+    patientWallet: string;
+    patientDid: string;
+    addedAt: string;
+};
+
+const initialVaccineForm = {
     patientName: '',
     patientDob: '',
     vaccineType: '',
@@ -48,16 +36,6 @@ const initialFormState = {
 };
 
 const DoctorDashboard: React.FC = () => {
-   /* const [appointments, setAppointments] = useState<Appointment[]>([
-        { id: 1, time: '09:00', patient: 'Jane Smith' },
-        { id: 2, time: '10:30', patient: 'Bob Lee' },
-        { id: 3, time: '13:15', patient: 'Alice Johnson' },
-    ]);*/
-
-    const [showVaccineForm, setShowVaccineForm] = useState(false);
-    const [vaccineForm, setVaccineForm] = useState(initialFormState);
-    const [certificates, setCertificates] = useState<VaccinationCertificate[]>([]);
-    const [loading, setLoading] = useState(false);
     const [profile, setProfile] = useState<DoctorProfile | null>(null);
     const [profileLoading, setProfileLoading] = useState(true);
     const [profileError, setProfileError] = useState<string | null>(null);
@@ -65,6 +43,7 @@ const DoctorDashboard: React.FC = () => {
     const [savingProfile, setSavingProfile] = useState(false);
     const [showEditProfile, setShowEditProfile] = useState(false);
     const [savingEditProfile, setSavingEditProfile] = useState(false);
+
     const [onboardingForm, setOnboardingForm] = useState({
         displayName: '',
         specialty: '',
@@ -81,6 +60,15 @@ const DoctorDashboard: React.FC = () => {
     });
     const [onboardingAvatarPreviewError, setOnboardingAvatarPreviewError] = useState(false);
     const [editAvatarPreviewError, setEditAvatarPreviewError] = useState(false);
+
+    const [showIssueCredentialModal, setShowIssueCredentialModal] = useState(false);
+    const [vaccineForm, setVaccineForm] = useState(initialVaccineForm);
+    const [manualPatientWallet, setManualPatientWallet] = useState('');
+    const [selectedPatient, setSelectedPatient] = useState<{ wallet: string; did: string } | null>(null);
+    const [pendingPatients, setPendingPatients] = useState<PendingPatient[]>([]);
+    const [credentialLoading, setCredentialLoading] = useState(false);
+    const [credentialError, setCredentialError] = useState<string | null>(null);
+    const [resolvingWallet, setResolvingWallet] = useState(false);
 
     const isValidAvatarUrl = (value: string) => {
         if (!value.trim()) return true;
@@ -161,7 +149,124 @@ const DoctorDashboard: React.FC = () => {
         }
     };
 
-    // Fetch certificates from Firebase on component mount
+    const loadPendingPatients = async () => {
+        try {
+            const headers = await buildAuthHeaders();
+            const response = await axios.get('http://localhost:3001/doctor/pending-patients/me', { headers });
+            setPendingPatients(response.data?.pendingPatients || []);
+        } catch (error: any) {
+            console.error('Failed to load pending patients:', error);
+        }
+    };
+
+    const prefillPatientForm = async (patient: { wallet: string; did: string }) => {
+        setSelectedPatient(patient);
+        setVaccineForm(initialVaccineForm);
+
+        try {
+            const headers = await buildAuthHeaders();
+            const response = await axios.get(
+                `http://localhost:3001/doctor/patient-profile/${encodeURIComponent(patient.did)}`,
+                { headers }
+            );
+            const profileFromPatient = response.data?.profile;
+
+            setVaccineForm((prev) => ({
+                ...prev,
+                patientName: String(profileFromPatient?.fullName || ''),
+                patientDob: String(profileFromPatient?.dateOfBirth || ''),
+            }));
+        } catch {
+            // Fallback: keep fields editable and blank if profile is unavailable.
+        }
+    };
+
+    const resolvePatientWallet = async () => {
+        const wallet = manualPatientWallet.trim().toLowerCase();
+        if (!wallet) {
+            setCredentialError('Please enter a wallet address');
+            return;
+        }
+
+        try {
+            setResolvingWallet(true);
+            setCredentialError(null);
+            const headers = await buildAuthHeaders();
+
+            const response = await axios.post(
+                'http://localhost:3001/doctor/pending-patients',
+                { patientWallet: wallet, patientDid: wallet },
+                { headers }
+            );
+
+            const patients = response.data?.pendingPatients?.patients || [];
+            const found = patients.find((p: any) => p.patientWallet === wallet);
+            if (found) {
+                await prefillPatientForm({ wallet: found.patientWallet, did: found.patientDid });
+                setPendingPatients(patients);
+                setManualPatientWallet('');
+            }
+        } catch (error: any) {
+            const detail = error?.response?.data?.error || error?.message || 'Failed to resolve patient';
+            setCredentialError(detail);
+        } finally {
+            setResolvingWallet(false);
+        }
+    };
+
+    const issueCredentialFromModal = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedPatient) {
+            setCredentialError('Please select a patient');
+            return;
+        }
+
+        try {
+            setCredentialLoading(true);
+            setCredentialError(null);
+            const headers = await buildAuthHeaders();
+
+            const response = await axios.post(
+                'http://localhost:3001/credential/issue',
+                {
+                    subjectDid: selectedPatient.did,
+                    subjectWallet: selectedPatient.wallet,
+                    credentialType: 'VaccinationCredential',
+                    name: vaccineForm.patientName,
+                    role: 'patient',
+                    credentialDetails: {
+                        patientName: vaccineForm.patientName,
+                        patientDob: vaccineForm.patientDob,
+                        vaccineType: vaccineForm.vaccineType,
+                        manufacturer: vaccineForm.manufacturer,
+                        batchNumber: vaccineForm.batchNumber,
+                        doseNumber: vaccineForm.doseNumber,
+                        dateAdministered: vaccineForm.dateAdministered,
+                        nextDoseDate: vaccineForm.nextDoseDate,
+                        notes: vaccineForm.notes,
+                    },
+                },
+                { headers }
+            );
+
+            await axios.delete(
+                `http://localhost:3001/doctor/pending-patients/${encodeURIComponent(selectedPatient.wallet)}`,
+                { headers }
+            );
+
+            alert(`Credential issued successfully!\n\nIssued to: ${response.data?.issuedTo}\nCredential type: ${response.data?.credentialType}`);
+            setVaccineForm(initialVaccineForm);
+            setShowIssueCredentialModal(false);
+            setSelectedPatient(null);
+            await loadPendingPatients();
+        } catch (error: any) {
+            const detail = error?.response?.data?.error || error?.message || 'Failed to issue credential';
+            setCredentialError(detail);
+        } finally {
+            setCredentialLoading(false);
+        }
+    };
+
     useEffect(() => {
         const role = String(localStorage.getItem('hc_role') || '').toLowerCase();
         if (role !== 'doctor') {
@@ -170,22 +275,7 @@ const DoctorDashboard: React.FC = () => {
         }
 
         void loadProfile();
-
-        const fetchCertificates = async () => {
-            try {
-                const certificatesRef = collection(db, 'VaccinationCertificate');
-                const q = query(certificatesRef, orderBy('createdAt', 'desc'));
-                const querySnapshot = await getDocs(q);
-                const fetchedCertificates: VaccinationCertificate[] = [];
-                querySnapshot.forEach((doc) => {
-                    fetchedCertificates.push({ id: doc.id, ...doc.data() } as VaccinationCertificate);
-                });
-                setCertificates(fetchedCertificates);
-            } catch (error) {
-                console.error('Error fetching certificates:', error);
-            }
-        };
-        fetchCertificates();
+        void loadPendingPatients();
     }, []);
 
     const handleLogout = () => {
@@ -195,9 +285,7 @@ const DoctorDashboard: React.FC = () => {
         window.location.href = '/login';
     };
 
-    const handleOnboardingInput = (
-        event: React.ChangeEvent<HTMLInputElement>
-    ) => {
+    const handleOnboardingInput = (event: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = event.target;
         setOnboardingForm((prev) => ({ ...prev, [name]: value }));
     };
@@ -214,7 +302,6 @@ const DoctorDashboard: React.FC = () => {
         try {
             setSavingProfile(true);
             setProfileError(null);
-
             const headers = await buildAuthHeaders();
             const response = await axios.post(
                 'http://localhost:3001/doctor/profile/me',
@@ -240,9 +327,7 @@ const DoctorDashboard: React.FC = () => {
         }
     };
 
-    const handleEditProfileInput = (
-        event: React.ChangeEvent<HTMLInputElement>
-    ) => {
+    const handleEditProfileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = event.target;
         setEditProfileForm((prev) => ({ ...prev, [name]: value }));
     };
@@ -284,54 +369,17 @@ const DoctorDashboard: React.FC = () => {
         }
     };
 
-    const handleNewNote = () => {
-        // replace with real note creation flow
-        alert('Create note not implemented');
-    };
-
-  /*  const toggleDone = (id: number) => {
-        setAppointments(prev =>
-            prev.map(a => (a.id === id ? { ...a, done: !a.done } : a))
-        );
-    };*/
-
     const handleVaccineFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setVaccineForm(prev => ({
+        setVaccineForm((prev) => ({
             ...prev,
-            [name]: name === 'doseNumber' ? parseInt(value) || 1 : value,
+            [name]: name === 'doseNumber' ? parseInt(value, 10) || 1 : value,
         }));
     };
 
-    const handleSaveCertificate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        try {
-            const certificateData = {
-                ...vaccineForm,
-                createdAt: new Date().toISOString(),
-            };
-            const docRef = await addDoc(collection(db, 'VaccinationCertificate'), certificateData);
-            const newCertificate: VaccinationCertificate = {
-                id: docRef.id,
-                ...vaccineForm,
-                createdAt: certificateData.createdAt,
-            };
-            setCertificates(prev => [newCertificate, ...prev]);
-            setVaccineForm(initialFormState);
-            setShowVaccineForm(false);
-            alert('Vaccination certificate saved successfully!');
-        } catch (error) {
-            console.error('Error saving certificate:', error);
-            alert('Error saving certificate. Please try again.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleCancelForm = () => {
-        setVaccineForm(initialFormState);
-        setShowVaccineForm(false);
+    const handleCancelIssueCredentialModal = () => {
+        setVaccineForm(initialVaccineForm);
+        setShowIssueCredentialModal(false);
     };
 
     return (
@@ -355,44 +403,16 @@ const DoctorDashboard: React.FC = () => {
                     <p>This one-time setup personalizes your dashboard and is linked to your DID.</p>
                     <form onSubmit={handleOnboardingSubmit} className="doctor-onboarding-form">
                         <label htmlFor="displayName">Display name *</label>
-                        <input
-                            id="displayName"
-                            name="displayName"
-                            type="text"
-                            value={onboardingForm.displayName}
-                            onChange={handleOnboardingInput}
-                            required
-                        />
+                        <input id="displayName" name="displayName" type="text" value={onboardingForm.displayName} onChange={handleOnboardingInput} required />
 
                         <label htmlFor="specialty">Specialty *</label>
-                        <input
-                            id="specialty"
-                            name="specialty"
-                            type="text"
-                            value={onboardingForm.specialty}
-                            onChange={handleOnboardingInput}
-                            placeholder="e.g. Internal Medicine"
-                            required
-                        />
+                        <input id="specialty" name="specialty" type="text" value={onboardingForm.specialty} onChange={handleOnboardingInput} placeholder="e.g. Internal Medicine" required />
 
                         <label htmlFor="hospitalOrClinic">Hospital or clinic *</label>
-                        <input
-                            id="hospitalOrClinic"
-                            name="hospitalOrClinic"
-                            type="text"
-                            value={onboardingForm.hospitalOrClinic}
-                            onChange={handleOnboardingInput}
-                            required
-                        />
+                        <input id="hospitalOrClinic" name="hospitalOrClinic" type="text" value={onboardingForm.hospitalOrClinic} onChange={handleOnboardingInput} required />
 
                         <label htmlFor="licenseNumber">License number (optional)</label>
-                        <input
-                            id="licenseNumber"
-                            name="licenseNumber"
-                            type="text"
-                            value={onboardingForm.licenseNumber}
-                            onChange={handleOnboardingInput}
-                        />
+                        <input id="licenseNumber" name="licenseNumber" type="text" value={onboardingForm.licenseNumber} onChange={handleOnboardingInput} />
 
                         <label htmlFor="avatarUrl">Avatar URL (optional)</label>
                         <input
@@ -414,12 +434,7 @@ const DoctorDashboard: React.FC = () => {
                         {onboardingForm.avatarUrl && isValidAvatarUrl(onboardingForm.avatarUrl) ? (
                             <div className="avatar-preview-wrap">
                                 {!onboardingAvatarPreviewError ? (
-                                    <img
-                                        src={onboardingForm.avatarUrl}
-                                        alt="Avatar preview"
-                                        className="avatar-preview"
-                                        onError={() => setOnboardingAvatarPreviewError(true)}
-                                    />
+                                    <img src={onboardingForm.avatarUrl} alt="Avatar preview" className="avatar-preview" onError={() => setOnboardingAvatarPreviewError(true)} />
                                 ) : (
                                     <div className="doctor-inline-error">Could not load this avatar image URL.</div>
                                 )}
@@ -458,43 +473,16 @@ const DoctorDashboard: React.FC = () => {
                     <p>Update your personalized dashboard details.</p>
                     <form onSubmit={handleEditProfileSubmit} className="doctor-onboarding-form">
                         <label htmlFor="editDisplayName">Display name *</label>
-                        <input
-                            id="editDisplayName"
-                            name="displayName"
-                            type="text"
-                            value={editProfileForm.displayName}
-                            onChange={handleEditProfileInput}
-                            required
-                        />
+                        <input id="editDisplayName" name="displayName" type="text" value={editProfileForm.displayName} onChange={handleEditProfileInput} required />
 
                         <label htmlFor="editSpecialty">Specialty *</label>
-                        <input
-                            id="editSpecialty"
-                            name="specialty"
-                            type="text"
-                            value={editProfileForm.specialty}
-                            onChange={handleEditProfileInput}
-                            required
-                        />
+                        <input id="editSpecialty" name="specialty" type="text" value={editProfileForm.specialty} onChange={handleEditProfileInput} required />
 
                         <label htmlFor="editHospitalOrClinic">Hospital or clinic *</label>
-                        <input
-                            id="editHospitalOrClinic"
-                            name="hospitalOrClinic"
-                            type="text"
-                            value={editProfileForm.hospitalOrClinic}
-                            onChange={handleEditProfileInput}
-                            required
-                        />
+                        <input id="editHospitalOrClinic" name="hospitalOrClinic" type="text" value={editProfileForm.hospitalOrClinic} onChange={handleEditProfileInput} required />
 
                         <label htmlFor="editLicenseNumber">License number (optional)</label>
-                        <input
-                            id="editLicenseNumber"
-                            name="licenseNumber"
-                            type="text"
-                            value={editProfileForm.licenseNumber}
-                            onChange={handleEditProfileInput}
-                        />
+                        <input id="editLicenseNumber" name="licenseNumber" type="text" value={editProfileForm.licenseNumber} onChange={handleEditProfileInput} />
 
                         <label htmlFor="editAvatarUrl">Avatar URL (optional)</label>
                         <input
@@ -516,12 +504,7 @@ const DoctorDashboard: React.FC = () => {
                         {editProfileForm.avatarUrl && isValidAvatarUrl(editProfileForm.avatarUrl) ? (
                             <div className="avatar-preview-wrap">
                                 {!editAvatarPreviewError ? (
-                                    <img
-                                        src={editProfileForm.avatarUrl}
-                                        alt="Avatar preview"
-                                        className="avatar-preview"
-                                        onError={() => setEditAvatarPreviewError(true)}
-                                    />
+                                    <img src={editProfileForm.avatarUrl} alt="Avatar preview" className="avatar-preview" onError={() => setEditAvatarPreviewError(true)} />
                                 ) : (
                                     <div className="doctor-inline-error">Could not load this avatar image URL.</div>
                                 )}
@@ -535,72 +518,84 @@ const DoctorDashboard: React.FC = () => {
                 </section>
             ) : null}
 
- {/*         <section className="appointments">
-                <h2>Today's Appointments</h2>
-                <ul className="appt-list">
-                    {appointments.map(a => (
-                        <li
-                            key={a.id}
-                            className={`appointment-item ${a.done ? 'done' : ''}`}
-                        >
-                            <span className="time">{a.time}</span>
-                            <span className="patient">{a.patient}</span>
-                            <button
-                                className="btn small"
-                                onClick={() => toggleDone(a.id)}
-                                aria-pressed={!!a.done}
-                            >
-                                {a.done ? 'Undo' : 'Done'}
-                            </button>
-                        </li>
-                    ))}
-                </ul>
-            </section>
- */}
-            <section className="actions">
-                <button className="btn" onClick={() => setShowVaccineForm(true)}>New Vaccination Certificate</button>
+            <section className="credential-issuance-section">
+                <h2>Issue Credentials</h2>
+
+                <div className="manual-patient-input">
+                    <h3>Manually add patient by wallet</h3>
+                    <div className="manual-input-form">
+                        <input
+                            type="text"
+                            placeholder="Paste patient wallet address here..."
+                            value={manualPatientWallet}
+                            onChange={(e) => setManualPatientWallet(e.target.value)}
+                            disabled={resolvingWallet}
+                        />
+                        <button className="btn" onClick={resolvePatientWallet} disabled={resolvingWallet || !manualPatientWallet.trim()}>
+                            {resolvingWallet ? 'Resolving...' : 'Add Patient'}
+                        </button>
+                    </div>
+                </div>
+
+                {credentialError ? <div className="credential-error">{credentialError}</div> : null}
+
+                {pendingPatients.length > 0 ? (
+                    <div className="pending-patients-section">
+                        <h3>Patients ({pendingPatients.length})</h3>
+                        <div className="patients-list">
+                            {pendingPatients.map((patient) => (
+                                <div
+                                    key={patient.patientWallet}
+                                    className={`patient-card ${selectedPatient?.wallet === patient.patientWallet ? 'selected' : ''}`}
+                                    onClick={() => {
+                                        void prefillPatientForm({ wallet: patient.patientWallet, did: patient.patientDid });
+                                    }}
+                                >
+                                    <div className="patient-info">
+                                        <strong>Wallet:</strong> {patient.patientWallet.substring(0, 10)}...
+                                    </div>
+                                    <div className="patient-info">
+                                        <strong>DID:</strong> {patient.patientDid.substring(0, 20)}...
+                                    </div>
+                                    <div className="patient-info">
+                                        <strong>Added:</strong> {new Date(patient.addedAt).toLocaleString()}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+
+                {selectedPatient ? (
+                    <div className="credential-form-section">
+                        <button className="btn" onClick={() => setShowIssueCredentialModal(true)} disabled={credentialLoading}>
+                            Issue Credential
+                        </button>
+                    </div>
+                ) : null}
             </section>
 
-            {showVaccineForm && (
+            {showIssueCredentialModal && selectedPatient ? (
                 <div className="modal-overlay">
                     <div className="vaccine-form-modal">
-                        <h2>Create Vaccination Certificate</h2>
-                        <form onSubmit={handleSaveCertificate} className="vaccine-form">
+                        <h2>Issue Vaccination Credential</h2>
+                        <p>Issuing to wallet: {selectedPatient.wallet}</p>
+                        <form onSubmit={issueCredentialFromModal} className="vaccine-form">
                             <div className="form-row">
                                 <div className="form-group">
-                                    <label htmlFor="patientName">Patient Name *</label>
-                                    <input
-                                        type="text"
-                                        id="patientName"
-                                        name="patientName"
-                                        value={vaccineForm.patientName}
-                                        onChange={handleVaccineFormChange}
-                                        required
-                                    />
+                                    <label htmlFor="issuePatientName">Patient Name *</label>
+                                    <input type="text" id="issuePatientName" name="patientName" value={vaccineForm.patientName} onChange={handleVaccineFormChange} required />
                                 </div>
                                 <div className="form-group">
-                                    <label htmlFor="patientDob">Date of Birth *</label>
-                                    <input
-                                        type="date"
-                                        id="patientDob"
-                                        name="patientDob"
-                                        value={vaccineForm.patientDob}
-                                        onChange={handleVaccineFormChange}
-                                        required
-                                    />
+                                    <label htmlFor="issuePatientDob">Date of Birth *</label>
+                                    <input type="date" id="issuePatientDob" name="patientDob" value={vaccineForm.patientDob} onChange={handleVaccineFormChange} required />
                                 </div>
                             </div>
 
                             <div className="form-row">
                                 <div className="form-group">
-                                    <label htmlFor="vaccineType">Vaccine Type *</label>
-                                    <select
-                                        id="vaccineType"
-                                        name="vaccineType"
-                                        value={vaccineForm.vaccineType}
-                                        onChange={handleVaccineFormChange}
-                                        required
-                                    >
+                                    <label htmlFor="issueVaccineType">Vaccine Type *</label>
+                                    <select id="issueVaccineType" name="vaccineType" value={vaccineForm.vaccineType} onChange={handleVaccineFormChange} required>
                                         <option value="">Select vaccine</option>
                                         <option value="COVID-19">COVID-19</option>
                                         <option value="Influenza">Influenza</option>
@@ -613,116 +608,50 @@ const DoctorDashboard: React.FC = () => {
                                     </select>
                                 </div>
                                 <div className="form-group">
-                                    <label htmlFor="manufacturer">Manufacturer *</label>
-                                    <input
-                                        type="text"
-                                        id="manufacturer"
-                                        name="manufacturer"
-                                        value={vaccineForm.manufacturer}
-                                        onChange={handleVaccineFormChange}
-                                        placeholder="e.g., Pfizer, Moderna"
-                                        required
-                                    />
+                                    <label htmlFor="issueManufacturer">Manufacturer *</label>
+                                    <input type="text" id="issueManufacturer" name="manufacturer" value={vaccineForm.manufacturer} onChange={handleVaccineFormChange} placeholder="e.g., Pfizer, Moderna" required />
                                 </div>
                             </div>
 
                             <div className="form-row">
                                 <div className="form-group">
-                                    <label htmlFor="batchNumber">Batch/Lot Number *</label>
-                                    <input
-                                        type="text"
-                                        id="batchNumber"
-                                        name="batchNumber"
-                                        value={vaccineForm.batchNumber}
-                                        onChange={handleVaccineFormChange}
-                                        required
-                                    />
+                                    <label htmlFor="issueBatchNumber">Batch/Lot Number *</label>
+                                    <input type="text" id="issueBatchNumber" name="batchNumber" value={vaccineForm.batchNumber} onChange={handleVaccineFormChange} required />
                                 </div>
                                 <div className="form-group">
-                                    <label htmlFor="doseNumber">Dose Number *</label>
-                                    <input
-                                        type="number"
-                                        id="doseNumber"
-                                        name="doseNumber"
-                                        value={vaccineForm.doseNumber}
-                                        onChange={handleVaccineFormChange}
-                                        min="1"
-                                        max="10"
-                                        required
-                                    />
+                                    <label htmlFor="issueDoseNumber">Dose Number *</label>
+                                    <input type="number" id="issueDoseNumber" name="doseNumber" value={vaccineForm.doseNumber} onChange={handleVaccineFormChange} min="1" max="10" required />
                                 </div>
                             </div>
 
                             <div className="form-row">
                                 <div className="form-group">
-                                    <label htmlFor="dateAdministered">Date Administered *</label>
-                                    <input
-                                        type="date"
-                                        id="dateAdministered"
-                                        name="dateAdministered"
-                                        value={vaccineForm.dateAdministered}
-                                        onChange={handleVaccineFormChange}
-                                        required
-                                    />
+                                    <label htmlFor="issueDateAdministered">Date Administered *</label>
+                                    <input type="date" id="issueDateAdministered" name="dateAdministered" value={vaccineForm.dateAdministered} onChange={handleVaccineFormChange} required />
                                 </div>
                                 <div className="form-group">
-                                    <label htmlFor="nextDoseDate">Next Dose Date</label>
-                                    <input
-                                        type="date"
-                                        id="nextDoseDate"
-                                        name="nextDoseDate"
-                                        value={vaccineForm.nextDoseDate}
-                                        onChange={handleVaccineFormChange}
-                                    />
+                                    <label htmlFor="issueNextDoseDate">Next Dose Date</label>
+                                    <input type="date" id="issueNextDoseDate" name="nextDoseDate" value={vaccineForm.nextDoseDate} onChange={handleVaccineFormChange} />
                                 </div>
                             </div>
 
                             <div className="form-group full-width">
-                                <label htmlFor="notes">Additional Notes</label>
-                                <textarea
-                                    id="notes"
-                                    name="notes"
-                                    value={vaccineForm.notes}
-                                    onChange={handleVaccineFormChange}
-                                    rows={3}
-                                    placeholder="Any additional information..."
-                                />
+                                <label htmlFor="issueNotes">Additional Notes</label>
+                                <textarea id="issueNotes" name="notes" value={vaccineForm.notes} onChange={handleVaccineFormChange} rows={3} placeholder="Any additional information..." />
                             </div>
 
                             <div className="form-actions">
-                                <button type="button" className="btn btn-secondary" onClick={handleCancelForm} disabled={loading}>
+                                <button type="button" className="btn btn-secondary" onClick={handleCancelIssueCredentialModal} disabled={credentialLoading}>
                                     Cancel
                                 </button>
-                                <button type="submit" className="btn" disabled={loading}>
-                                    {loading ? 'Saving...' : 'Save Certificate'}
+                                <button type="submit" className="btn" disabled={credentialLoading}>
+                                    {credentialLoading ? 'Issuing...' : 'Issue Credential'}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
-            )}
-
-            {certificates.length > 0 && (
-                <section className="certificates-section">
-                    <h2>Saved Certificates ({certificates.length})</h2>
-                    <div className="certificates-list">
-                        {certificates.map(cert => (
-                            <div key={cert.id} className="certificate-card">
-                                <div className="cert-header">
-                                    <strong>{cert.patientName}</strong>
-                                    <span className="cert-date">{new Date(cert.createdAt).toLocaleDateString()}</span>
-                                </div>
-                                <div className="cert-details">
-                                    <span><strong>Vaccine:</strong> {cert.vaccineType}</span>
-                                    <span><strong>Dose:</strong> #{cert.doseNumber}</span>
-                                    <span><strong>Manufacturer:</strong> {cert.manufacturer}</span>
-                                    <span><strong>Batch:</strong> {cert.batchNumber}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-            )}
+            ) : null}
         </div>
     );
 };

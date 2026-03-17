@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth"
 import didRoutes from "./routes/did"
 import credentialRoutes from "./routes/credential"
 import doctorRoutes from "./routes/doctor"
+import patientRoutes from "./routes/patient"
 
 dotenv.config()
 
@@ -28,6 +29,7 @@ async function startServer(){
   app.use("/did", didRoutes(agent))
   app.use("/credential", credentialRoutes(agent))
   app.use("/doctor", doctorRoutes())
+  app.use("/patient", patientRoutes())
 
   app.get("/", (req,res)=>{
     res.send("HealthChain Backend Running")

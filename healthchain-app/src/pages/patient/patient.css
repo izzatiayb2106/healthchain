@@ -6,6 +6,14 @@
 	color: #222;
 }
 
+.patient-error {
+	color: #b00020;
+	background: #fff4f6;
+	padding: 10px 12px;
+	border-radius: 8px;
+	margin-bottom: 14px;
+}
+
 .patient-header {
 	display: flex;
 	justify-content: space-between;
@@ -29,6 +37,79 @@
 .btn.logout {
 	background: #f0f0f0;
 	color: #333;
+}
+
+.patient-card {
+	background: #fff;
+	border: 1px solid #e8edf4;
+	border-radius: 10px;
+	padding: 14px;
+	margin-bottom: 18px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.patient-card h2 {
+	margin: 0 0 8px 0;
+	font-size: 1.1rem;
+	color: #163a66;
+}
+
+.patient-card p {
+	margin: 0 0 10px 0;
+	color: #4a607a;
+}
+
+.patient-form {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.patient-form label {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: #2d4460;
+}
+
+.patient-form input,
+.patient-form select {
+	padding: 10px 12px;
+	border: 1px solid #c9dff6;
+	border-radius: 8px;
+	font-size: 0.95rem;
+	font-family: inherit;
+	background: #fff;
+}
+
+.patient-profile-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px 12px;
+	margin-bottom: 12px;
+	color: #244361;
+}
+
+.credential-list {
+	display: grid;
+	gap: 10px;
+}
+
+.credential-card {
+	padding: 12px;
+	border-radius: 8px;
+	background: #f8fbff;
+	border: 1px solid #dbeaff;
+}
+
+.credential-card h3 {
+	margin: 0 0 8px 0;
+	font-size: 1rem;
+	color: #1f528c;
+}
+
+.credential-card p {
+	margin: 4px 0;
+	color: #334f6b;
 }
 
 .patient-stats {
@@ -128,81 +209,41 @@
 	font-size: 0.9rem;
 }
 
-.appointment-list {
-	display: grid;
-	gap: 10px;
-}
-
-.appt-card {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 12px;
-	border-radius: 8px;
-	background: #fff;
-	border: 1px solid #eee;
-}
-
-.appt-card.upcoming {
-	border-left: 4px solid #2b8aef;
-}
-
-.appt-card.requested {
-	border-left: 4px dashed #2b8aef;
-	background: #fbfbff;
-}
-
-.appt-card.completed {
-	background: #f7fff8;
-	border-color: #e6f7ec;
-}
-
-.appt-card.cancelled {
-	opacity: 0.7;
-	background: #fff7f7;
-	border-color: #f5dede;
-	text-decoration: line-through;
-}
-
-.appt-main {
+.doctor-wallet-form {
 	display: flex;
 	flex-direction: column;
+	gap: 10px;
+	margin-top: 12px;
+	padding: 12px;
+	background: #f9fbfd;
+	border-radius: 8px;
+	border: 1px solid #dce8f4;
 }
 
-.clinic-name {
-	margin: 0;
-	font-size: 1rem;
+.doctor-wallet-form label {
+	font-weight: 600;
+	font-size: 0.85rem;
+	color: #2d4460;
 }
 
-.appt-date {
-	color: #555;
-	font-size: 0.95rem;
-	margin-top: 4px;
+.doctor-wallet-form input {
+	padding: 10px 12px;
+	border: 1px solid #c9dff6;
+	border-radius: 8px;
+	font-size: 0.9rem;
+	font-family: monospace;
+	background: #fff;
 }
 
-.appt-actions {
-	display: flex;
-	align-items: center;
-	gap: 8px;
+.doctor-wallet-form input:focus {
+	outline: none;
+	border-color: #1976d2;
+	box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
 }
 
-.btn.cancel {
-	background: #e55353;
-	color: #fff;
+.doctor-wallet-form .btn {
+	align-self: flex-start;
 }
-
-.status-badge {
-	padding: 6px 10px;
-	border-radius: 999px;
-	font-weight: 700;
-	font-size: 0.8rem;
-	color: #fff;
-}
-
-.status-badge.upcoming { background: #2b8aef; }
-.status-badge.requested { background: #6ea8ff; }
-.status-badge.completed { background: #2ea44f; }
-.status-badge.cancelled { background: #d64545; }
 
 .patient-footer {
 	margin-top: 22px;
@@ -211,19 +252,18 @@
 }
 
 @media (max-width: 640px) {
-	.patient-stats {
-		flex-direction: column;
-		align-items: stretch;
-	}
-
-	.appt-card {
+	.patient-header {
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 10px;
 	}
 
-	.appt-actions {
-		width: 100%;
-		justify-content: space-between;
+	.patient-stats {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.patient-profile-grid {
+		grid-template-columns: 1fr;
 	}
 }

@@ -2,6 +2,12 @@ import express from "express";
 import { ethers } from "ethers";
 import { getIdentityByWallet } from "../services/authServices";
 import { getDoctorProfileByDid, upsertDoctorProfile } from "../services/doctorProfileService";
+import { getPatientProfileByDid, getPatientProfileByWallet } from "../services/patientProfileService";
+import {
+  getPendingPatientsByDoctorDid,
+  addPendingPatient,
+  removePendingPatient,
+} from "../services/doctorPendingPatientsService";
 
 function isValidAvatarUrl(value: string) {
   if (!value) return true;
@@ -166,6 +172,126 @@ export default function doctorRoutes() {
       }
       console.error(error);
       return res.status(500).json({ error: "Failed to update doctor profile" });
+    }
+  });
+
+  router.post("/pending-patients", async (req, res) => {
+    try {
+      const identity = await resolveDoctorIdentity(req);
+      const patientWallet = String(req.body.patientWallet || "").trim().toLowerCase();
+      const patientDid = String(req.body.patientDid || "").trim();
+
+      if (!patientWallet) {
+        return res.status(400).json({ error: "patientWallet is required" });
+      }
+
+      if (!patientDid) {
+        return res.status(400).json({ error: "patientDid is required" });
+      }
+
+      const recordAdded = addPendingPatient(identity.did, identity.wallet, patientWallet, patientDid);
+      return res.status(201).json({ success: true, pendingPatients: recordAdded });
+    } catch (error: any) {
+      const message = error?.message || "Failed to add pending patient";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Doctor role required") {
+        return res.status(403).json({ error: message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Failed to add pending patient" });
+    }
+  });
+
+  router.get("/pending-patients", async (req, res) => {
+    try {
+      const identity = await resolveDoctorIdentity(req);
+      const pendingPatients = getPendingPatientsByDoctorDid(identity.did);
+      return res.json({ success: true, pendingPatients: pendingPatients?.patients || [] });
+    } catch (error: any) {
+      const message = error?.message || "Failed to fetch pending patients";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Doctor role required") {
+        return res.status(403).json({ error: message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Failed to fetch pending patients" });
+    }
+  });
+
+  router.get("/pending-patients/me", async (req, res) => {
+    try {
+      const identity = await resolveDoctorIdentity(req);
+      const pendingPatients = getPendingPatientsByDoctorDid(identity.did);
+      return res.json({ success: true, pendingPatients: pendingPatients?.patients || [] });
+    } catch (error: any) {
+      const message = error?.message || "Failed to fetch pending patients";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Doctor role required") {
+        return res.status(403).json({ error: message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Failed to fetch pending patients" });
+    }
+  });
+
+  router.delete("/pending-patients/:patientWallet", async (req, res) => {
+    try {
+      const identity = await resolveDoctorIdentity(req);
+      const patientWallet = String(req.params.patientWallet || "").trim().toLowerCase();
+
+      if (!patientWallet) {
+        return res.status(400).json({ error: "patientWallet is required" });
+      }
+
+      const updated = removePendingPatient(identity.did, patientWallet);
+      return res.json({ success: true, pendingPatients: updated?.patients || [] });
+    } catch (error: any) {
+      const message = error?.message || "Failed to remove pending patient";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Doctor role required") {
+        return res.status(403).json({ error: message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Failed to remove pending patient" });
+    }
+  });
+
+  router.get("/patient-profile/:patientDid", async (req, res) => {
+    try {
+      await resolveDoctorIdentity(req);
+      const patientDid = String(req.params.patientDid || "").trim();
+      if (!patientDid) {
+        return res.status(400).json({ error: "patientDid is required" });
+      }
+
+      // If patientDid looks like a plain wallet address (no DID prefix), fall back to wallet lookup
+      let patientProfile = await getPatientProfileByDid(patientDid);
+      if (!patientProfile && patientDid.startsWith("0x")) {
+        patientProfile = await getPatientProfileByWallet(patientDid);
+      }
+      if (!patientProfile) {
+        return res.status(404).json({ error: "Patient profile not found" });
+      }
+
+      return res.json({ success: true, profile: patientProfile });
+    } catch (error: any) {
+      const message = error?.message || "Failed to load patient profile";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Doctor role required") {
+        return res.status(403).json({ error: message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Failed to load patient profile" });
     }
   });
 

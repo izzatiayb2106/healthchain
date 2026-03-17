@@ -315,6 +315,177 @@
     color: #333;
 }
 
+/* Credential Issuance Section */
+.credential-issuance-section {
+    margin-top: 32px;
+    padding: 20px;
+    background: #f0f4f8;
+    border-radius: 8px;
+    border: 1px solid #d0dce6;
+}
+
+.credential-issuance-section h2 {
+    margin: 0 0 20px 0;
+    font-size: 1.3rem;
+    color: #1976d2;
+}
+
+.credential-issuance-section h3 {
+    margin: 16px 0 12px 0;
+    font-size: 1.1rem;
+    color: #333;
+}
+
+.qr-code-section {
+    background: #fff;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.qr-code-container {
+    display: flex;
+    justify-content: center;
+    margin: 16px 0;
+    padding: 16px;
+    background: #fafafa;
+    border-radius: 8px;
+}
+
+.qr-wallet-text {
+    font-size: 0.85rem;
+    color: #666;
+    word-break: break-all;
+}
+
+.manual-patient-input {
+    background: #fff;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.manual-input-form {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.manual-input-form input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-family: monospace;
+}
+
+.manual-input-form input:focus {
+    outline: none;
+    border-color: #1976d2;
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.manual-input-form .btn {
+    white-space: nowrap;
+}
+
+.credential-error {
+    color: #b00020;
+    background: #fff4f6;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    border-left: 4px solid #b00020;
+}
+
+.pending-patients-section {
+    background: #fff;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.patients-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.patient-card {
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 6px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.patient-card:hover {
+    background: #e9ecef;
+    border-color: #1976d2;
+}
+
+.patient-card.selected {
+    background: #e3f2fd;
+    border-color: #1976d2;
+    box-shadow: 0 2px 8px rgba(25, 118, 210, 0.2);
+}
+
+.patient-info {
+    font-size: 0.8rem;
+    color: #555;
+    margin-bottom: 6px;
+    word-break: break-all;
+}
+
+.patient-info strong {
+    color: #333;
+}
+
+.credential-form-section {
+    background: #fff;
+    padding: 16px;
+    border-radius: 8px;
+    border: 2px solid #1976d2;
+}
+
+.credential-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.credential-form label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.credential-form select,
+.credential-form textarea {
+    padding: 10px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.credential-form select:focus,
+.credential-form textarea:focus {
+    outline: none;
+    border-color: #1976d2;
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.credential-form textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .doctor-dashboard {

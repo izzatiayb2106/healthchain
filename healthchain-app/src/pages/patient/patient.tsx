@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
 import './patient.css';
@@ -9,14 +9,55 @@ declare global {
 	}
 }
 
-type Appointment = {
-	id: number;
-	date: string;
-	clinic: string;
-	status: 'upcoming' | 'completed' | 'cancelled' | 'requested';
+type PatientProfile = {
+	did: string;
+	wallet: string;
+	fullName: string;
+	dateOfBirth: string;
+	bloodType: string;
+	phone: string;
+	email: string;
+	emergencyContact: string;
+	createdAt: string;
+	updatedAt: string;
+};
+
+type DoctorIssuedCredential = {
+	issuedAt: string;
+	credentialType: string;
+	issuerDid: string;
+	issuerRole: string;
+	issuedByDoctor: boolean;
+	credential: any;
+};
+
+const emptyProfileForm = {
+	fullName: '',
+	dateOfBirth: '',
+	bloodType: '',
+	phone: '',
+	email: '',
+	emergencyContact: '',
 };
 
 const PatientDashboard: React.FC = () => {
+	const [profile, setProfile] = useState<PatientProfile | null>(null);
+	const [profileLoading, setProfileLoading] = useState(true);
+	const [profileError, setProfileError] = useState<string | null>(null);
+	const [showOnboarding, setShowOnboarding] = useState(false);
+	const [showEditProfile, setShowEditProfile] = useState(false);
+	const [profileForm, setProfileForm] = useState(emptyProfileForm);
+	const [savingProfile, setSavingProfile] = useState(false);
+
+	const [credentials, setCredentials] = useState<DoctorIssuedCredential[]>([]);
+	const [credentialsLoading, setCredentialsLoading] = useState(true);
+	const [credentialsError, setCredentialsError] = useState<string | null>(null);
+
+	const [showDoctorWalletInput, setShowDoctorWalletInput] = useState(false);
+	const [doctorWalletInput, setDoctorWalletInput] = useState('');
+	const [registeringWithDoctor, setRegisteringWithDoctor] = useState(false);
+	const [doctorRegistrationError, setDoctorRegistrationError] = useState<string | null>(null);
+
 	const [showDoctorApply, setShowDoctorApply] = useState(false);
 	const [professionalId, setProfessionalId] = useState('');
 	const [credentialJwt, setCredentialJwt] = useState('');
@@ -24,16 +65,143 @@ const PatientDashboard: React.FC = () => {
 	const [applySuccess, setApplySuccess] = useState<string | null>(null);
 	const [isApplying, setIsApplying] = useState(false);
 
-	const [appointments, setAppointments] = useState<Appointment[]>([
-		{ id: 1, date: '2025-12-01', clinic: 'Downtown Clinic', status: 'upcoming' },
-		{ id: 2, date: '2025-10-15', clinic: 'Northside Hospital', status: 'completed' },
-	]);
+	const buildAuthHeaders = async () => {
+		const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
+		if (!wallet) {
+			throw new Error('No wallet found. Please log in again.');
+		}
+
+		if (!window.ethereum) {
+			throw new Error('MetaMask is required for secure patient access.');
+		}
+
+		const provider = new ethers.BrowserProvider(window.ethereum);
+		await provider.send('eth_requestAccounts', []);
+		const signer = await provider.getSigner();
+		const activeWallet = (await signer.getAddress()).toLowerCase();
+		if (activeWallet !== wallet) {
+			throw new Error('Please switch MetaMask to the same wallet used at login.');
+		}
+
+		const message = `Patient access auth for ${wallet} at ${new Date().toISOString()}`;
+		const signature = await signer.signMessage(message);
+
+		return {
+			'x-user-wallet': wallet,
+			'x-user-message': message,
+			'x-user-signature': signature,
+		};
+	};
+
+	const hydrateProfileForm = (value: PatientProfile) => {
+		setProfileForm({
+			fullName: value.fullName || '',
+			dateOfBirth: value.dateOfBirth || '',
+			bloodType: value.bloodType || '',
+			phone: value.phone || '',
+			email: value.email || '',
+			emergencyContact: value.emergencyContact || '',
+		});
+	};
+
+	const loadDashboardData = async () => {
+		try {
+			setProfileLoading(true);
+			setCredentialsLoading(true);
+			setProfileError(null);
+			setCredentialsError(null);
+
+			const headers = await buildAuthHeaders();
+
+			try {
+				const profileRes = await axios.get('http://localhost:3001/patient/profile/me', { headers });
+				const loadedProfile = profileRes.data?.profile as PatientProfile;
+				setProfile(loadedProfile);
+				hydrateProfileForm(loadedProfile);
+				setShowOnboarding(Boolean(profileRes.data?.needsOnboarding));
+			} catch (error: any) {
+				if (error?.response?.status === 404) {
+					setShowOnboarding(true);
+					setProfile(null);
+					setProfileForm(emptyProfileForm);
+				} else {
+					throw error;
+				}
+			}
+
+			const credentialsRes = await axios.get('http://localhost:3001/patient/credentials/me', { headers });
+			setCredentials(Array.isArray(credentialsRes.data?.credentials) ? credentialsRes.data.credentials : []);
+		} catch (error: any) {
+			const detail = error?.response?.data?.error || error?.message || 'Failed to load patient dashboard';
+			setProfileError(detail);
+			setCredentialsError(detail);
+		} finally {
+			setProfileLoading(false);
+			setCredentialsLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		const role = String(localStorage.getItem('hc_role') || '').toLowerCase();
+		if (role !== 'patient') {
+			window.location.href = '/login';
+			return;
+		}
+
+		void loadDashboardData();
+	}, []);
 
 	const handleLogout = () => {
 		localStorage.removeItem('hc_wallet');
 		localStorage.removeItem('hc_did');
 		localStorage.removeItem('hc_role');
 		window.location.href = '/login';
+	};
+
+	const handleProfileInput = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+		const { name, value } = event.target;
+		setProfileForm((prev) => ({ ...prev, [name]: value }));
+	};
+
+	const submitProfile = async (event: React.FormEvent, mode: 'create' | 'update') => {
+		event.preventDefault();
+		if (savingProfile) return;
+
+		try {
+			setSavingProfile(true);
+			setProfileError(null);
+
+			if (!profileForm.fullName.trim() || !profileForm.dateOfBirth) {
+				setProfileError('Full name and date of birth are required.');
+				return;
+			}
+
+			const headers = await buildAuthHeaders();
+			const endpoint = 'http://localhost:3001/patient/profile/me';
+			const payload = {
+				fullName: profileForm.fullName,
+				dateOfBirth: profileForm.dateOfBirth,
+				bloodType: profileForm.bloodType,
+				phone: profileForm.phone,
+				email: profileForm.email,
+				emergencyContact: profileForm.emergencyContact,
+			};
+
+			const response = mode === 'create'
+				? await axios.post(endpoint, payload, { headers })
+				: await axios.put(endpoint, payload, { headers });
+
+			const saved = response.data?.profile as PatientProfile;
+			setProfile(saved);
+			hydrateProfileForm(saved);
+			setShowOnboarding(false);
+			setShowEditProfile(false);
+		} catch (error: any) {
+			const detail = error?.response?.data?.error || error?.message || 'Failed to save patient profile';
+			setProfileError(detail);
+		} finally {
+			setSavingProfile(false);
+		}
 	};
 
 	const applyForDoctorAccess = async (event: React.FormEvent) => {
@@ -83,42 +251,226 @@ const PatientDashboard: React.FC = () => {
 		}
 	};
 
-	const requestAppointment = () => {
-		const nextId = appointments.length ? Math.max(...appointments.map(a => a.id)) + 1 : 1;
-		const newAppt: Appointment = {
-			id: nextId,
-			date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // one week out
-			clinic: 'Primary Care',
-			status: 'requested',
-		};
-		setAppointments(prev => [newAppt, ...prev]);
+	const parseCredentialSubject = (credential: any) => {
+		try {
+			if (typeof credential === 'string') {
+				const payload = JSON.parse(atob(credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+				return payload?.vc?.credentialSubject || null;
+			}
+			return credential?.credentialSubject || credential?.vc?.credentialSubject || null;
+		} catch {
+			return null;
+		}
 	};
 
-	const cancelAppointment = (id: number) => {
-		setAppointments(prev => prev.map(a => (a.id === id ? { ...a, status: 'cancelled' } : a)));
-	};
+	const registerWithDoctor = async (event: React.FormEvent) => {
+		event.preventDefault();
+		if (registeringWithDoctor) return;
 
-	const upcomingCount = appointments.filter(a => a.status === 'upcoming' || a.status === 'requested').length;
-	const totalCount = appointments.length;
+		const doctorWallet = doctorWalletInput.trim().toLowerCase();
+		if (!doctorWallet) {
+			setDoctorRegistrationError('Please enter or scan a doctor wallet address');
+			return;
+		}
+
+		try {
+			setRegisteringWithDoctor(true);
+			setDoctorRegistrationError(null);
+
+			const currentWallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
+			const currentDid = String(localStorage.getItem('hc_did') || '').trim();
+
+			if (!currentWallet || !currentDid) {
+				setDoctorRegistrationError('Your wallet information is missing. Please log in again.');
+				return;
+			}
+
+			const headers = await buildAuthHeaders();
+
+			// POST to doctor endpoint to register this patient with the doctor
+			await axios.post(
+				'http://localhost:3001/doctor/pending-patients',
+				{
+					patientWallet: currentWallet,
+					patientDid: currentDid,
+				},
+				{
+					headers: {
+						...headers,
+						'x-user-wallet': doctorWallet,
+						'x-user-message': `Doctor registration notification for ${currentWallet}`,
+						'x-user-signature': 'patient-initiated', // placeholder, actual auth will be doctor's in real scenario
+					},
+				}
+			);
+
+			alert(`Successfully registered with doctor ${doctorWallet.substring(0, 10)}...!\n\nThe doctor can now see you in their patient list and issue credentials to you.`);
+			setDoctorWalletInput('');
+			setShowDoctorWalletInput(false);
+		} catch (error: any) {
+			const detail = error?.response?.data?.error || error?.message || 'Failed to register with doctor';
+			setDoctorRegistrationError(detail);
+		} finally {
+			setRegisteringWithDoctor(false);
+		}
+	};
 
 	return (
 		<div className="patient-dashboard">
 			<header className="patient-header">
-				<h1>Patient Dashboard</h1>
+				<h1>{profile?.fullName ? `Welcome, ${profile.fullName}` : 'Patient Dashboard'}</h1>
 				<button className="btn logout" onClick={handleLogout}>Logout</button>
 			</header>
 
-			<section className="patient-stats">
-				<div className="stat">
-					<div className="stat-value">{totalCount}</div>
-					<div className="stat-label">Appointments</div>
-				</div>
-				<div className="stat">
-					<div className="stat-value">{upcomingCount}</div>
-					<div className="stat-label">Upcoming</div>
-				</div>
-				<div className="stat">
-					<button className="btn request" onClick={requestAppointment}>Request Appointment</button>
+			{profileError ? <div className="patient-error">{profileError}</div> : null}
+
+			{profileLoading ? (
+				<section className="patient-card"><p>Loading your profile...</p></section>
+			) : null}
+
+			{showOnboarding ? (
+				<section className="patient-card">
+					<h2>Complete your patient profile</h2>
+					<p>This one-time onboarding personalizes your dashboard and secures your medical credential feed.</p>
+					<form className="patient-form" onSubmit={(event) => submitProfile(event, 'create')}>
+						<label htmlFor="fullName">Full name *</label>
+						<input id="fullName" name="fullName" value={profileForm.fullName} onChange={handleProfileInput} required />
+
+						<label htmlFor="dateOfBirth">Date of birth *</label>
+						<input id="dateOfBirth" name="dateOfBirth" type="date" value={profileForm.dateOfBirth} onChange={handleProfileInput} required />
+
+						<label htmlFor="bloodType">Blood type</label>
+						<select id="bloodType" name="bloodType" value={profileForm.bloodType} onChange={handleProfileInput}>
+							<option value="">Select blood type</option>
+							<option value="A+">A+</option>
+							<option value="A-">A-</option>
+							<option value="B+">B+</option>
+							<option value="B-">B-</option>
+							<option value="AB+">AB+</option>
+							<option value="AB-">AB-</option>
+							<option value="O+">O+</option>
+							<option value="O-">O-</option>
+						</select>
+
+						<label htmlFor="phone">Phone</label>
+						<input id="phone" name="phone" value={profileForm.phone} onChange={handleProfileInput} />
+
+						<label htmlFor="email">Email</label>
+						<input id="email" name="email" type="email" value={profileForm.email} onChange={handleProfileInput} />
+
+						<label htmlFor="emergencyContact">Emergency contact</label>
+						<input id="emergencyContact" name="emergencyContact" value={profileForm.emergencyContact} onChange={handleProfileInput} />
+
+						<button className="btn request" type="submit" disabled={savingProfile}>
+							{savingProfile ? 'Saving profile...' : 'Save profile'}
+						</button>
+					</form>
+				</section>
+			) : null}
+
+			{!showOnboarding && profile ? (
+				<section className="patient-card">
+					<h2>My Profile</h2>
+					<div className="patient-profile-grid">
+						<div><strong>Name:</strong> {profile.fullName || '-'}</div>
+						<div><strong>Date of birth:</strong> {profile.dateOfBirth || '-'}</div>
+						<div><strong>Blood type:</strong> {profile.bloodType || '-'}</div>
+						<div><strong>Phone:</strong> {profile.phone || '-'}</div>
+						<div><strong>Email:</strong> {profile.email || '-'}</div>
+						<div><strong>Emergency:</strong> {profile.emergencyContact || '-'}</div>
+					</div>
+					<button className="btn request" onClick={() => setShowEditProfile((prev) => !prev)}>
+						{showEditProfile ? 'Close Profile Editor' : 'Edit Profile'}
+					</button>
+				</section>
+			) : null}
+
+			{showEditProfile && profile ? (
+				<section className="patient-card">
+					<h2>Edit Patient Profile</h2>
+					<form className="patient-form" onSubmit={(event) => submitProfile(event, 'update')}>
+						<label htmlFor="editFullName">Full name *</label>
+						<input id="editFullName" name="fullName" value={profileForm.fullName} onChange={handleProfileInput} required />
+
+						<label htmlFor="editDateOfBirth">Date of birth *</label>
+						<input id="editDateOfBirth" name="dateOfBirth" type="date" value={profileForm.dateOfBirth} onChange={handleProfileInput} required />
+
+						<label htmlFor="editBloodType">Blood type</label>
+						<select id="editBloodType" name="bloodType" value={profileForm.bloodType} onChange={handleProfileInput}>
+							<option value="">Select blood type</option>
+							<option value="A+">A+</option>
+							<option value="A-">A-</option>
+							<option value="B+">B+</option>
+							<option value="B-">B-</option>
+							<option value="AB+">AB+</option>
+							<option value="AB-">AB-</option>
+							<option value="O+">O+</option>
+							<option value="O-">O-</option>
+						</select>
+
+						<label htmlFor="editPhone">Phone</label>
+						<input id="editPhone" name="phone" value={profileForm.phone} onChange={handleProfileInput} />
+
+						<label htmlFor="editEmail">Email</label>
+						<input id="editEmail" name="email" type="email" value={profileForm.email} onChange={handleProfileInput} />
+
+						<label htmlFor="editEmergencyContact">Emergency contact</label>
+						<input id="editEmergencyContact" name="emergencyContact" value={profileForm.emergencyContact} onChange={handleProfileInput} />
+
+						<button className="btn request" type="submit" disabled={savingProfile}>
+							{savingProfile ? 'Updating profile...' : 'Update profile'}
+						</button>
+					</form>
+				</section>
+			) : null}
+
+			<section className="patient-card">
+				<h2>Register with a Doctor</h2>
+				<p>Scan your doctor's QR code or enter their wallet address to allow them to issue credentials to you.</p>
+				<button className="btn request" onClick={() => setShowDoctorWalletInput((prev) => !prev)}>
+					{showDoctorWalletInput ? 'Cancel' : 'Scan or Enter Doctor Wallet'}
+				</button>
+
+				{showDoctorWalletInput ? (
+					<form className="doctor-wallet-form" onSubmit={registerWithDoctor}>
+						<label htmlFor="doctorWallet">Doctor Wallet Address (from QR code scan)</label>
+						<input
+							id="doctorWallet"
+							type="text"
+							value={doctorWalletInput}
+							onChange={(event) => setDoctorWalletInput(event.target.value)}
+							placeholder="Paste doctor's wallet address here (or QR scan result)"
+							disabled={registeringWithDoctor}
+						/>
+						{doctorRegistrationError ? <div className="doctor-apply-error">{doctorRegistrationError}</div> : null}
+						<button type="submit" className="btn request" disabled={registeringWithDoctor || !doctorWalletInput.trim()}>
+							{registeringWithDoctor ? 'Registering...' : 'Register with Doctor'}
+						</button>
+					</form>
+				) : null}
+			</section>
+
+			<section className="patient-card">
+				<h2>Credentials Issued By Doctors</h2>
+				{credentialsError ? <div className="doctor-apply-error">{credentialsError}</div> : null}
+				{credentialsLoading ? <p>Loading credentials...</p> : null}
+				{!credentialsLoading && credentials.length === 0 ? (
+					<p>No doctor-issued credentials found yet.</p>
+				) : null}
+
+				<div className="credential-list">
+					{credentials.map((entry, index) => {
+						const subject = parseCredentialSubject(entry.credential);
+						return (
+							<article key={`${entry.issuedAt}-${index}`} className="credential-card">
+								<h3>{entry.credentialType}</h3>
+								<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
+								<p><strong>Issuer DID:</strong> {entry.issuerDid || 'Unknown issuer'}</p>
+								{subject?.name ? <p><strong>Subject name:</strong> {String(subject.name)}</p> : null}
+								{subject?.role ? <p><strong>Role claim:</strong> {String(subject.role)}</p> : null}
+							</article>
+						);
+					})}
 				</div>
 			</section>
 
@@ -160,23 +512,6 @@ const PatientDashboard: React.FC = () => {
 						</button>
 					</form>
 				) : null}
-			</section>
-
-			<section className="appointment-list">
-				{appointments.map(appt => (
-					<article key={appt.id} className={`appt-card ${appt.status}`}>
-						<div className="appt-main">
-							<h3 className="clinic-name">{appt.clinic}</h3>
-							<div className="appt-date">{appt.date}</div>
-						</div>
-						<div className="appt-actions">
-							<span className={`status-badge ${appt.status}`}>{appt.status}</span>
-							{appt.status === 'upcoming' || appt.status === 'requested' ? (
-								<button className="btn cancel" onClick={() => cancelAppointment(appt.id)}>Cancel</button>
-							) : null}
-						</div>
-					</article>
-				))}
 			</section>
 
 			<footer className="patient-footer">
