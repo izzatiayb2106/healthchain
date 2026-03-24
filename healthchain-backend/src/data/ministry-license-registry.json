@@ -1,0 +1,28 @@
+{
+  "records": [
+    {
+      "professionalId": "MOH-123456",
+      "fullName": "Dr. Amina Rahman",
+      "licenseType": "Medical Practitioner",
+      "specialty": "Internal Medicine",
+      "status": "active",
+      "validUntil": "2028-12-31",
+      "linkedWallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee"
+    },
+    {
+      "professionalId": "MOH-223344",
+      "fullName": "Dr. Kelvin Tan",
+      "licenseType": "Medical Practitioner",
+      "specialty": "Family Medicine",
+      "status": "active"
+    },
+    {
+      "professionalId": "MOH-998877",
+      "fullName": "Dr. Siti Noor",
+      "licenseType": "Medical Practitioner",
+      "specialty": "Pediatrics",
+      "status": "suspended",
+      "validUntil": "2026-06-30"
+    }
+  ]
+}

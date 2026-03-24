@@ -1,9 +1,14 @@
 import express from "express";
 import { ethers } from "ethers";
 import { ensureDidForWallet } from "../services/didService";
-import { getCaDid, getIdentityByWallet, getSystemAdminWallet, setRole, upsertIdentity } from "../services/authServices";
+import { getCaDid, getIdentityByDid, getIdentityByWallet, getSystemAdminWallet, setRole, upsertIdentity } from "../services/authServices";
 import { hasCredentialType, saveIssuedCredential } from "../services/credentialServices";
 import { upsertDoctorProfile } from "../services/doctorProfileService";
+import {
+  canLicenseBeIssuedToWallet,
+  getMinistryLicenseByProfessionalId,
+  listMinistryLicenseRecords,
+} from "../services/ministryRegistryService";
 
 const KNOWN_ROLES = new Set(["patient", "doctor", "verifier", "admin"]);
 
@@ -79,6 +84,12 @@ async function resolveRoleByCredential(did: string, currentRole: string) {
 
 export default function authRoutes(agent: any) {
   const router = express.Router();
+
+  const resolveDemoMinistryDid = async () => {
+    const issuerWallet = String(process.env.DEMO_MINISTRY_WALLET || "demo-ministry-wallet").trim().toLowerCase();
+    const ensured = await ensureDidForWallet(agent, issuerWallet);
+    return String(ensured.identifier?.did || "").trim();
+  };
 
   router.post("/metamask", async (req, res) => {
     try {
@@ -198,11 +209,12 @@ export default function authRoutes(agent: any) {
       }
 
       const caDid = await getCaDid();
+      const demoMinistryDid = await resolveDemoMinistryDid();
       const ministryDids = String(process.env.MINISTRY_DIDS || "")
         .split(",")
         .map((entry) => entry.trim())
         .filter(Boolean);
-      const trustedIssuers = new Set([caDid, ...ministryDids].filter(Boolean));
+      const trustedIssuers = new Set([caDid, demoMinistryDid, ...ministryDids].filter(Boolean));
 
       if (trustedIssuers.size === 0) {
         return res.status(500).json({ error: "No trusted Ministry/CA issuer configured" });
@@ -238,6 +250,105 @@ export default function authRoutes(agent: any) {
         error: "Doctor access application failed",
         details: err?.message || "Unknown error",
       });
+    }
+  });
+
+  // Demo helper: list Ministry registry entries used as source-of-truth for issuance.
+  router.get("/ministry/registry", async (_req, res) => {
+    try {
+      const records = await listMinistryLicenseRecords();
+      return res.json({ total: records.length, records });
+    } catch (err: any) {
+      console.error(err);
+      return res.status(500).json({ error: "Failed to load Ministry registry" });
+    }
+  });
+
+  // Demo helper: issue a Ministry-signed doctor-access VC JWT from a whitelist entry.
+  router.post("/ministry/issue-doctor-vc", async (req, res) => {
+    try {
+      const professionalId = String(req.body.professionalId || "").trim();
+      const doctorWallet = String(req.body.doctorWallet || "").trim().toLowerCase();
+      const doctorDidInput = String(req.body.doctorDid || "").trim();
+
+      if (!professionalId) {
+        return res.status(400).json({ error: "professionalId is required" });
+      }
+
+      if (!doctorWallet && !doctorDidInput) {
+        return res.status(400).json({ error: "doctorWallet or doctorDid is required" });
+      }
+
+      const licenseRecord = await getMinistryLicenseByProfessionalId(professionalId);
+      if (!licenseRecord) {
+        return res.status(404).json({ error: "Professional ID not found in Ministry registry" });
+      }
+
+      if (licenseRecord.status !== "active") {
+        return res.status(400).json({ error: `License is not active (status: ${licenseRecord.status})` });
+      }
+
+      let doctorIdentity = null;
+      if (doctorWallet) {
+        doctorIdentity = await getIdentityByWallet(doctorWallet);
+      }
+      if (!doctorIdentity && doctorDidInput) {
+        doctorIdentity = await getIdentityByDid(doctorDidInput);
+      }
+
+      if (!doctorIdentity) {
+        return res.status(404).json({ error: "Doctor identity not found. Login with MetaMask first to create DID mapping." });
+      }
+
+      if (!canLicenseBeIssuedToWallet(licenseRecord, doctorIdentity.wallet)) {
+        return res.status(403).json({ error: "Professional ID is linked to a different wallet" });
+      }
+
+      const ministryDid = await resolveDemoMinistryDid();
+      if (!ministryDid) {
+        return res.status(500).json({ error: "Failed to resolve demo Ministry DID" });
+      }
+
+      const credential = await agent.createVerifiableCredential({
+        credential: {
+          issuer: { id: ministryDid },
+          credentialSubject: {
+            id: doctorIdentity.did,
+            wallet: doctorIdentity.wallet,
+            name: licenseRecord.fullName,
+            role: "doctor",
+            professionalId: licenseRecord.professionalId,
+            licenseType: licenseRecord.licenseType,
+            specialty: licenseRecord.specialty,
+            licenseStatus: licenseRecord.status,
+            validUntil: licenseRecord.validUntil,
+            issuedBy: "Demo Ministry of Health",
+          },
+          type: ["VerifiableCredential", "MedicalLicenseCredential"],
+        },
+        proofFormat: "jwt",
+      });
+
+      const credentialJwt =
+        typeof credential === "string"
+          ? credential
+          : String(credential?.proof?.jwt || "").trim();
+
+      if (!credentialJwt) {
+        return res.status(500).json({ error: "Issued credential did not include a JWT proof" });
+      }
+
+      return res.json({
+        success: true,
+        issuerDid: ministryDid,
+        issuedTo: doctorIdentity.did,
+        credentialType: "MedicalLicenseCredential",
+        credentialJwt,
+        credential,
+      });
+    } catch (err: any) {
+      console.error(err);
+      return res.status(500).json({ error: "Failed to issue Ministry doctor VC", details: err?.message || "Unknown error" });
     }
   });
 

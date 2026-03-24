@@ -3,6 +3,8 @@ import { ethers } from "ethers";
 import { getIdentityByDid, getIdentityByWallet } from "../services/authServices";
 import { listIssuedCredentialsBySubject } from "../services/credentialServices";
 import { getPatientProfileByDid, upsertPatientProfile } from "../services/patientProfileService";
+import { getDoctorProfileByDid } from "../services/doctorProfileService";
+import { addPendingPatient } from "../services/doctorPendingPatientsService";
 
 function parseJwtPayload(tokenLike: string): any {
   const token = String(tokenLike || "").trim();
@@ -173,10 +175,15 @@ export default function patientRoutes() {
           .map(async (entry) => {
             const issuerDid = extractIssuerDid(entry.credential);
             const issuerIdentity = issuerDid ? await getIdentityByDid(issuerDid) : null;
+            const issuerProfile = issuerDid ? await getDoctorProfileByDid(issuerDid) : null;
+            const issuerName = String(
+              issuerProfile?.displayName || issuerProfile?.legalName || ""
+            ).trim();
             return {
               issuedAt: entry.issuedAt,
               credentialType: entry.credentialType,
               issuerDid,
+              issuerName,
               issuerRole: issuerIdentity?.role || "unknown",
               issuedByDoctor: issuerIdentity?.role === "doctor",
               credential: entry.credential,
@@ -200,6 +207,42 @@ export default function patientRoutes() {
       }
       console.error(error);
       return res.status(500).json({ error: "Failed to load patient credentials" });
+    }
+  });
+
+  // Patient-initiated: register themselves with a doctor
+  router.post("/register-with-doctor", async (req, res) => {
+    try {
+      const patientIdentity = await resolvePatientIdentity(req);
+
+      const doctorWallet = String(req.body.doctorWallet || "").trim().toLowerCase();
+      if (!doctorWallet) {
+        return res.status(400).json({ error: "doctorWallet is required" });
+      }
+
+      const doctorIdentity = await getIdentityByWallet(doctorWallet);
+      if (!doctorIdentity || doctorIdentity.role !== "doctor") {
+        return res.status(404).json({ error: "No registered doctor found with that wallet address" });
+      }
+
+      addPendingPatient(
+        doctorIdentity.did,
+        doctorIdentity.wallet,
+        patientIdentity.wallet,
+        patientIdentity.did
+      );
+
+      return res.status(201).json({ success: true, doctorDid: doctorIdentity.did });
+    } catch (error: any) {
+      const message = error?.message || "Failed to register with doctor";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Patient role required") {
+        return res.status(403).json({ error: message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Failed to register with doctor" });
     }
   });
 

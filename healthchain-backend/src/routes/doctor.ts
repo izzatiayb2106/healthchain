@@ -1,13 +1,44 @@
 import express from "express";
 import { ethers } from "ethers";
-import { getIdentityByWallet } from "../services/authServices";
+import { getIdentityByDid, getIdentityByWallet } from "../services/authServices";
 import { getDoctorProfileByDid, upsertDoctorProfile } from "../services/doctorProfileService";
 import { getPatientProfileByDid, getPatientProfileByWallet } from "../services/patientProfileService";
+import { listIssuedCredentialsBySubject } from "../services/credentialServices";
 import {
   getPendingPatientsByDoctorDid,
   addPendingPatient,
   removePendingPatient,
 } from "../services/doctorPendingPatientsService";
+
+function parseJwtPayload(tokenLike: string): any {
+  const token = String(tokenLike || "").trim();
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+function extractIssuerDid(credential: any): string {
+  if (!credential) return "";
+
+  if (typeof credential === "string") {
+    const jwtPayload = parseJwtPayload(credential);
+    const vc = jwtPayload?.vc || {};
+    const issuer = vc?.issuer || jwtPayload?.iss || "";
+    return typeof issuer === "string" ? issuer : String(issuer?.id || "");
+  }
+
+  if (typeof credential === "object") {
+    const issuer = credential?.issuer || credential?.vc?.issuer || credential?.proof?.issuer || "";
+    return typeof issuer === "string" ? issuer : String(issuer?.id || "");
+  }
+
+  return "";
+}
 
 function isValidAvatarUrl(value: string) {
   if (!value) return true;
@@ -179,15 +210,21 @@ export default function doctorRoutes() {
     try {
       const identity = await resolveDoctorIdentity(req);
       const patientWallet = String(req.body.patientWallet || "").trim().toLowerCase();
-      const patientDid = String(req.body.patientDid || "").trim();
+      const patientDidInput = String(req.body.patientDid || "").trim();
 
       if (!patientWallet) {
         return res.status(400).json({ error: "patientWallet is required" });
       }
 
-      if (!patientDid) {
-        return res.status(400).json({ error: "patientDid is required" });
+      const patientIdentity = await getIdentityByWallet(patientWallet);
+      if (!patientIdentity || patientIdentity.role !== "patient") {
+        return res.status(404).json({ error: "No registered patient found with that wallet address" });
       }
+
+      const patientDid =
+        patientDidInput && patientDidInput.startsWith("did:")
+          ? patientDidInput
+          : patientIdentity.did;
 
       const recordAdded = addPendingPatient(identity.did, identity.wallet, patientWallet, patientDid);
       return res.status(201).json({ success: true, pendingPatients: recordAdded });
@@ -292,6 +329,55 @@ export default function doctorRoutes() {
       }
       console.error(error);
       return res.status(500).json({ error: "Failed to load patient profile" });
+    }
+  });
+
+  router.get("/patient-credentials/:patientDid", async (req, res) => {
+    try {
+      const doctorIdentity = await resolveDoctorIdentity(req);
+      const patientDidParam = String(req.params.patientDid || "").trim();
+      if (!patientDidParam) {
+        return res.status(400).json({ error: "patientDid is required" });
+      }
+
+      let patientIdentity = await getIdentityByDid(patientDidParam);
+      if (!patientIdentity && patientDidParam.startsWith("0x")) {
+        patientIdentity = await getIdentityByWallet(patientDidParam.toLowerCase());
+      }
+      if (!patientIdentity || patientIdentity.role !== "patient") {
+        return res.status(404).json({ error: "Patient identity not found" });
+      }
+
+      const issued = await listIssuedCredentialsBySubject(patientIdentity.did);
+      const doctorIssued = issued
+        .map((entry) => ({
+          ...entry,
+          issuerDid: extractIssuerDid(entry.credential),
+        }))
+        .filter((entry) => String(entry.issuerDid || "").toLowerCase() === doctorIdentity.did.toLowerCase())
+        .map((entry) => ({
+          issuedAt: entry.issuedAt,
+          credentialType: entry.credentialType,
+          issuerDid: entry.issuerDid,
+          credential: entry.credential,
+        }));
+
+      return res.json({
+        success: true,
+        patientDid: patientIdentity.did,
+        total: doctorIssued.length,
+        credentials: doctorIssued,
+      });
+    } catch (error: any) {
+      const message = error?.message || "Failed to load patient credentials";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Doctor role required") {
+        return res.status(403).json({ error: message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Failed to load patient credentials" });
     }
   });
 

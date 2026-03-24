@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "@veramo/core": "^7.0.0",
+    "@veramo/credential-jwt": "^7.0.0",
     "@veramo/credential-w3c": "^7.0.0",
     "@veramo/data-store": "^7.0.0",
     "@veramo/did-manager": "^7.0.0",

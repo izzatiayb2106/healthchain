@@ -26,6 +26,7 @@ type DoctorIssuedCredential = {
 	issuedAt: string;
 	credentialType: string;
 	issuerDid: string;
+	issuerName?: string;
 	issuerRole: string;
 	issuedByDoctor: boolean;
 	credential: any;
@@ -287,21 +288,11 @@ const PatientDashboard: React.FC = () => {
 
 			const headers = await buildAuthHeaders();
 
-			// POST to doctor endpoint to register this patient with the doctor
+			// POST to patient endpoint — authenticated as the patient themselves
 			await axios.post(
-				'http://localhost:3001/doctor/pending-patients',
-				{
-					patientWallet: currentWallet,
-					patientDid: currentDid,
-				},
-				{
-					headers: {
-						...headers,
-						'x-user-wallet': doctorWallet,
-						'x-user-message': `Doctor registration notification for ${currentWallet}`,
-						'x-user-signature': 'patient-initiated', // placeholder, actual auth will be doctor's in real scenario
-					},
-				}
+				'http://localhost:3001/patient/register-with-doctor',
+				{ doctorWallet },
+				{ headers }
 			);
 
 			alert(`Successfully registered with doctor ${doctorWallet.substring(0, 10)}...!\n\nThe doctor can now see you in their patient list and issue credentials to you.`);
@@ -428,7 +419,7 @@ const PatientDashboard: React.FC = () => {
 				<h2>Register with a Doctor</h2>
 				<p>Scan your doctor's QR code or enter their wallet address to allow them to issue credentials to you.</p>
 				<button className="btn request" onClick={() => setShowDoctorWalletInput((prev) => !prev)}>
-					{showDoctorWalletInput ? 'Cancel' : 'Scan or Enter Doctor Wallet'}
+					{showDoctorWalletInput ? 'Cancel' : 'Scan/Enter Doctor Wallet'}
 				</button>
 
 				{showDoctorWalletInput ? (
@@ -451,7 +442,7 @@ const PatientDashboard: React.FC = () => {
 			</section>
 
 			<section className="patient-card">
-				<h2>Credentials Issued By Doctors</h2>
+				<h2>Vaccination Certificates</h2>
 				{credentialsError ? <div className="doctor-apply-error">{credentialsError}</div> : null}
 				{credentialsLoading ? <p>Loading credentials...</p> : null}
 				{!credentialsLoading && credentials.length === 0 ? (
@@ -465,9 +456,10 @@ const PatientDashboard: React.FC = () => {
 							<article key={`${entry.issuedAt}-${index}`} className="credential-card">
 								<h3>{entry.credentialType}</h3>
 								<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
-								<p><strong>Issuer DID:</strong> {entry.issuerDid || 'Unknown issuer'}</p>
+								<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
+								<p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
 								{subject?.name ? <p><strong>Subject name:</strong> {String(subject.name)}</p> : null}
-								{subject?.role ? <p><strong>Role claim:</strong> {String(subject.role)}</p> : null}
+
 							</article>
 						);
 					})}
@@ -477,10 +469,10 @@ const PatientDashboard: React.FC = () => {
 			<section className="doctor-apply-card">
 				<h2>Professional Access</h2>
 				<p>
-					Are you a medical professional? Apply for Doctor Access.
+					Are you a medical professional?
 				</p>
 				<button className="btn request" onClick={() => setShowDoctorApply(prev => !prev)}>
-					{showDoctorApply ? 'Hide Doctor Application' : 'Are you a medical professional? Apply for Doctor Access.'}
+					{showDoctorApply ? 'Hide Doctor Application' : 'Apply for Doctor Access'}
 				</button>
 
 				{showDoctorApply ? (

@@ -1,7 +1,8 @@
 import express from "express";
 import { ethers } from "ethers";
-import { getIdentityByDid, getIdentityByWallet } from "../services/authServices";
+import { getIdentityByDid, getIdentityByWallet, upsertIdentity } from "../services/authServices";
 import { listIssuedCredentialsBySubject, saveIssuedCredential } from "../services/credentialServices";
+import { ensureDidForWallet } from "../services/didService";
 
 function getWalletAuth(req: express.Request) {
   const wallet = String(req.header("x-user-wallet") || "").trim().toLowerCase();
@@ -39,12 +40,16 @@ export default function credentialRoutes(agent: any) {
         return res.status(403).json({ error: "Doctor role required to issue credentials" });
       }
 
-      const subjectDid = String(req.body.subjectDid || req.body.subject || "").trim();
-      if (!subjectDid) {
+      const subjectInput = String(req.body.subjectDid || req.body.subject || "").trim();
+      if (!subjectInput) {
         return res.status(400).json({ error: "subjectDid is required" });
       }
 
-      const patientIdentity = await getIdentityByDid(subjectDid);
+      // Backward compatibility: older pending records store wallet in patientDid.
+      let patientIdentity = await getIdentityByDid(subjectInput);
+      if (!patientIdentity && subjectInput.startsWith("0x")) {
+        patientIdentity = await getIdentityByWallet(subjectInput.toLowerCase());
+      }
       if (!patientIdentity || patientIdentity.role !== "patient") {
         return res.status(400).json({ error: "subjectDid must belong to an existing patient" });
       }
@@ -54,14 +59,27 @@ export default function credentialRoutes(agent: any) {
         return res.status(400).json({ error: "subjectWallet does not match subjectDid mapping" });
       }
 
+      // Ensure issuer DID exists in Veramo key store to avoid stale DID mapping failures.
+      const ensuredIssuer = await ensureDidForWallet(agent, doctorIdentity.wallet);
+      const issuerDid = String(ensuredIssuer.identifier?.did || doctorIdentity.did || "").trim();
+      if (!issuerDid) {
+        return res.status(500).json({ error: "Unable to resolve issuer DID for doctor wallet" });
+      }
+      if (issuerDid !== doctorIdentity.did) {
+        await upsertIdentity(doctorIdentity.wallet, issuerDid, doctorIdentity.role);
+      }
+
       const credential = await agent.createVerifiableCredential({
         credential: {
-          issuer: { id: doctorIdentity.did },
+          issuer: { id: issuerDid },
           credentialSubject: {
             id: patientIdentity.did,
             wallet: patientIdentity.wallet,
             name: req.body.name,
             role: req.body.role || "patient",
+            ...(req.body.credentialDetails && typeof req.body.credentialDetails === "object"
+              ? req.body.credentialDetails
+              : {}),
           },
           type: ['VerifiableCredential', req.body.credentialType || 'RoleCredential'],
         },
@@ -72,7 +90,7 @@ export default function credentialRoutes(agent: any) {
 
       res.json({
         success: true,
-        issuedBy: doctorIdentity.did,
+        issuedBy: issuerDid,
         issuedTo: patientIdentity.did,
         credentialType: String(req.body.credentialType || 'RoleCredential'),
         credential,
@@ -89,7 +107,7 @@ export default function credentialRoutes(agent: any) {
       if (message === "Identity not found for wallet") {
         return res.status(404).json({ error: message });
       }
-      res.status(500).json({ error: "Credential issuance failed" });
+      res.status(500).json({ error: "Credential issuance failed", details: message });
     }
   });
 

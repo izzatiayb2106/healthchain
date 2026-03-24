@@ -23,6 +23,13 @@ type PendingPatient = {
     addedAt: string;
 };
 
+type IssuedCredentialEntry = {
+    issuedAt: string;
+    credentialType: string;
+    issuerDid: string;
+    credential: any;
+};
+
 const initialVaccineForm = {
     patientName: '',
     patientDob: '',
@@ -69,6 +76,10 @@ const DoctorDashboard: React.FC = () => {
     const [credentialLoading, setCredentialLoading] = useState(false);
     const [credentialError, setCredentialError] = useState<string | null>(null);
     const [resolvingWallet, setResolvingWallet] = useState(false);
+    const [removingPatientWallet, setRemovingPatientWallet] = useState<string | null>(null);
+    const [selectedPatientCredentials, setSelectedPatientCredentials] = useState<IssuedCredentialEntry[]>([]);
+    const [patientCredentialsLoading, setPatientCredentialsLoading] = useState(false);
+    const [patientCredentialsError, setPatientCredentialsError] = useState<string | null>(null);
 
     const isValidAvatarUrl = (value: string) => {
         if (!value.trim()) return true;
@@ -159,9 +170,41 @@ const DoctorDashboard: React.FC = () => {
         }
     };
 
+    const parseCredentialSubject = (credential: any) => {
+        try {
+            if (typeof credential === 'string') {
+                const payload = JSON.parse(atob(credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+                return payload?.vc?.credentialSubject || null;
+            }
+            return credential?.credentialSubject || credential?.vc?.credentialSubject || null;
+        } catch {
+            return null;
+        }
+    };
+
+    const loadPatientCredentials = async (patient: { wallet: string; did: string }) => {
+        try {
+            setPatientCredentialsLoading(true);
+            setPatientCredentialsError(null);
+            const headers = await buildAuthHeaders();
+            const response = await axios.get(
+                `http://localhost:3001/doctor/patient-credentials/${encodeURIComponent(patient.did)}`,
+                { headers }
+            );
+            setSelectedPatientCredentials(Array.isArray(response.data?.credentials) ? response.data.credentials : []);
+        } catch (error: any) {
+            const detail = error?.response?.data?.error || error?.message || 'Failed to load patient credentials';
+            setPatientCredentialsError(detail);
+            setSelectedPatientCredentials([]);
+        } finally {
+            setPatientCredentialsLoading(false);
+        }
+    };
+
     const prefillPatientForm = async (patient: { wallet: string; did: string }) => {
         setSelectedPatient(patient);
         setVaccineForm(initialVaccineForm);
+        void loadPatientCredentials(patient);
 
         try {
             const headers = await buildAuthHeaders();
@@ -214,6 +257,40 @@ const DoctorDashboard: React.FC = () => {
         }
     };
 
+    const removePatient = async (patientWallet: string) => {
+        const wallet = String(patientWallet || '').trim().toLowerCase();
+        if (!wallet) return;
+
+        const shouldRemove = window.confirm('Remove this patient from your list?');
+        if (!shouldRemove) return;
+
+        try {
+            setRemovingPatientWallet(wallet);
+            setCredentialError(null);
+            const headers = await buildAuthHeaders();
+            const response = await axios.delete(
+                `http://localhost:3001/doctor/pending-patients/${encodeURIComponent(wallet)}`,
+                { headers }
+            );
+
+            const updatedPatients = response.data?.pendingPatients || [];
+            setPendingPatients(updatedPatients);
+
+            if (selectedPatient?.wallet === wallet) {
+                setSelectedPatient(null);
+                setShowIssueCredentialModal(false);
+                setVaccineForm(initialVaccineForm);
+                setSelectedPatientCredentials([]);
+                setPatientCredentialsError(null);
+            }
+        } catch (error: any) {
+            const detail = error?.response?.data?.error || error?.message || 'Failed to remove patient';
+            setCredentialError(detail);
+        } finally {
+            setRemovingPatientWallet(null);
+        }
+    };
+
     const issueCredentialFromModal = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedPatient) {
@@ -248,17 +325,10 @@ const DoctorDashboard: React.FC = () => {
                 },
                 { headers }
             );
-
-            await axios.delete(
-                `http://localhost:3001/doctor/pending-patients/${encodeURIComponent(selectedPatient.wallet)}`,
-                { headers }
-            );
-
             alert(`Credential issued successfully!\n\nIssued to: ${response.data?.issuedTo}\nCredential type: ${response.data?.credentialType}`);
             setVaccineForm(initialVaccineForm);
             setShowIssueCredentialModal(false);
-            setSelectedPatient(null);
-            await loadPendingPatients();
+            await loadPatientCredentials(selectedPatient);
         } catch (error: any) {
             const detail = error?.response?.data?.error || error?.message || 'Failed to issue credential';
             setCredentialError(detail);
@@ -551,6 +621,19 @@ const DoctorDashboard: React.FC = () => {
                                         void prefillPatientForm({ wallet: patient.patientWallet, did: patient.patientDid });
                                     }}
                                 >
+                                    <div className="patient-card-actions">
+                                        <button
+                                            type="button"
+                                            className="btn btn-danger small-remove"
+                                            disabled={removingPatientWallet === patient.patientWallet}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                void removePatient(patient.patientWallet);
+                                            }}
+                                        >
+                                            {removingPatientWallet === patient.patientWallet ? 'Removing...' : 'Remove'}
+                                        </button>
+                                    </div>
                                     <div className="patient-info">
                                         <strong>Wallet:</strong> {patient.patientWallet.substring(0, 10)}...
                                     </div>
@@ -571,6 +654,28 @@ const DoctorDashboard: React.FC = () => {
                         <button className="btn" onClick={() => setShowIssueCredentialModal(true)} disabled={credentialLoading}>
                             Issue Credential
                         </button>
+
+                        <div className="doctor-issued-credentials-section">
+                            <h3>Credentials Issued</h3>
+                            {patientCredentialsError ? <div className="credential-error">{patientCredentialsError}</div> : null}
+                            {patientCredentialsLoading ? <p>Loading credentials...</p> : null}
+                            {!patientCredentialsLoading && selectedPatientCredentials.length === 0 ? (
+                                <p>No credentials issued to this patient by you yet.</p>
+                            ) : null}
+
+                            {selectedPatientCredentials.map((entry, index) => {
+                                const subject = parseCredentialSubject(entry.credential);
+                                return (
+                                    <article key={`${entry.issuedAt}-${index}`} className="doctor-credential-card">
+                                        <h4>{entry.credentialType}</h4>
+                                        <p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
+                                        <p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
+                                        <p><strong>Dose Number:</strong> {subject?.doseNumber ? String(subject.doseNumber) : 'Not specified'}</p>
+                                        <p><strong>Date Administered:</strong> {subject?.dateAdministered ? String(subject.dateAdministered) : 'Not specified'}</p>
+                                    </article>
+                                );
+                            })}
+                        </div>
                     </div>
                 ) : null}
             </section>
@@ -652,6 +757,10 @@ const DoctorDashboard: React.FC = () => {
                     </div>
                 </div>
             ) : null}
+
+            <footer className="doctor-footer">
+				<small>HealthChain • Doctor portal</small>
+			</footer>
         </div>
     );
 };

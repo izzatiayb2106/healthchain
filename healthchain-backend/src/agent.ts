@@ -9,6 +9,7 @@ import { DataSource } from 'typeorm'
 import { Entities, KeyStore, DIDStore, PrivateKeyStore } from '@veramo/data-store'
 import { EthrDIDProvider } from '@veramo/did-provider-ethr'
 import { CredentialPlugin } from '@veramo/credential-w3c'
+import { CredentialProviderJWT } from '@veramo/credential-jwt'
 import { DIDResolverPlugin } from '@veramo/did-resolver'
 import dotenv from 'dotenv'
 
@@ -82,7 +83,7 @@ export async function createVeramoAgent() {
       }),
       
       //issue credentials
-      new CredentialPlugin([]),
+      new CredentialPlugin([new CredentialProviderJWT()]),
       
     ],
   })

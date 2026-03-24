@@ -434,6 +434,22 @@
     box-shadow: 0 2px 8px rgba(25, 118, 210, 0.2);
 }
 
+.patient-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 6px;
+}
+
+.btn.btn-danger {
+    background: #b00020;
+}
+
+.btn.small-remove {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: 999px;
+}
+
 .patient-info {
     font-size: 0.8rem;
     color: #555;
@@ -450,6 +466,33 @@
     padding: 16px;
     border-radius: 8px;
     border: 2px solid #1976d2;
+}
+
+.doctor-issued-credentials-section {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #dbe3ef;
+}
+
+.doctor-credential-card {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid #dce6f5;
+    border-radius: 8px;
+    background: #f8fbff;
+}
+
+.doctor-credential-card h4 {
+    margin: 0 0 8px;
+    color: #1b5fa7;
+}
+  .doctor-footer {
+	margin-top: 22px;
+	text-align: center;
+	color: #888;
+}
+.doctor-credential-card p {
+    margin: 4px 0;
 }
 
 .credential-form {
@@ -566,4 +609,5 @@
         padding: 12px;
         font-size: 16px; /* Prevents zoom on iOS */
     }
+  
 }
