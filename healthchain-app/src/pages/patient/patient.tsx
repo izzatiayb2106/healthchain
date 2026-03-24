@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
+import { QRCodeSVG } from 'qrcode.react';
 import './patient.css';
 
 declare global {
@@ -30,6 +31,13 @@ type DoctorIssuedCredential = {
 	issuerRole: string;
 	issuedByDoctor: boolean;
 	credential: any;
+};
+
+type QrSession = {
+	qrPayload: string;
+	expiresAt: string;
+	issuedAt: string;
+	credentialType: string;
 };
 
 const emptyProfileForm = {
@@ -65,6 +73,9 @@ const PatientDashboard: React.FC = () => {
 	const [applyError, setApplyError] = useState<string | null>(null);
 	const [applySuccess, setApplySuccess] = useState<string | null>(null);
 	const [isApplying, setIsApplying] = useState(false);
+	const [qrLoadingForIssuedAt, setQrLoadingForIssuedAt] = useState<string | null>(null);
+	const [qrError, setQrError] = useState<string | null>(null);
+	const [qrSession, setQrSession] = useState<QrSession | null>(null);
 
 	const buildAuthHeaders = async () => {
 		const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
@@ -264,6 +275,35 @@ const PatientDashboard: React.FC = () => {
 		}
 	};
 
+	const openCredentialQr = async (entry: DoctorIssuedCredential) => {
+		try {
+			setQrError(null);
+			setQrLoadingForIssuedAt(entry.issuedAt);
+			const headers = await buildAuthHeaders();
+			const response = await axios.post(
+				'http://localhost:3001/credential/qr/create',
+				{ issuedAt: entry.issuedAt, credentialType: entry.credentialType },
+				{ headers }
+			);
+
+			setQrSession({
+				qrPayload: String(response.data?.qrPayload || ''),
+				expiresAt: String(response.data?.expiresAt || ''),
+				issuedAt: entry.issuedAt,
+				credentialType: entry.credentialType,
+			});
+		} catch (error: any) {
+			const detail = error?.response?.data?.error || error?.message || 'Failed to generate QR code';
+			setQrError(detail);
+		} finally {
+			setQrLoadingForIssuedAt(null);
+		}
+	};
+
+	const closeQrModal = () => {
+		setQrSession(null);
+	};
+
 	const registerWithDoctor = async (event: React.FormEvent) => {
 		event.preventDefault();
 		if (registeringWithDoctor) return;
@@ -443,6 +483,8 @@ const PatientDashboard: React.FC = () => {
 
 			<section className="patient-card">
 				<h2>Vaccination Certificates</h2>
+				<p>Click a credential card to generate a verifier-only QR code.</p>
+				{qrError ? <div className="doctor-apply-error">{qrError}</div> : null}
 				{credentialsError ? <div className="doctor-apply-error">{credentialsError}</div> : null}
 				{credentialsLoading ? <p>Loading credentials...</p> : null}
 				{!credentialsLoading && credentials.length === 0 ? (
@@ -452,19 +494,37 @@ const PatientDashboard: React.FC = () => {
 				<div className="credential-list">
 					{credentials.map((entry, index) => {
 						const subject = parseCredentialSubject(entry.credential);
+						const isGeneratingQr = qrLoadingForIssuedAt === entry.issuedAt;
 						return (
-							<article key={`${entry.issuedAt}-${index}`} className="credential-card">
+							<article key={`${entry.issuedAt}-${index}`} className="credential-card credential-card-clickable" onClick={() => void openCredentialQr(entry)}>
 								<h3>{entry.credentialType}</h3>
 								<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
 								<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
 								<p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
 								{subject?.name ? <p><strong>Subject name:</strong> {String(subject.name)}</p> : null}
+								<p className="credential-qr-hint">{isGeneratingQr ? 'Generating secure QR...' : 'Tap to generate verifier QR'}</p>
 
 							</article>
 						);
 					})}
 				</div>
 			</section>
+
+			{qrSession ? (
+				<div className="modal-overlay" onClick={closeQrModal}>
+					<div className="credential-qr-modal" onClick={(event) => event.stopPropagation()}>
+						<h2>Verifier-Only Credential QR</h2>
+						<p><strong>Credential:</strong> {qrSession.credentialType}</p>
+						<p><strong>Issued:</strong> {new Date(qrSession.issuedAt).toLocaleString()}</p>
+						<p><strong>Expires:</strong> {qrSession.expiresAt ? new Date(qrSession.expiresAt).toLocaleString() : 'Soon'}</p>
+						<div className="credential-qr-code-wrap">
+							<QRCodeSVG value={qrSession.qrPayload} size={220} includeMargin />
+						</div>
+						<p className="credential-qr-note">Only users logged in with verifier role can redeem this QR token.</p>
+						<button type="button" className="btn request" onClick={closeQrModal}>Close</button>
+					</div>
+				</div>
+			) : null}
 
 			<section className="doctor-apply-card">
 				<h2>Professional Access</h2>

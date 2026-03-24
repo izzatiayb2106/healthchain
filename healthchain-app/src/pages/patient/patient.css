@@ -101,6 +101,16 @@
 	border: 1px solid #dbeaff;
 }
 
+.credential-card-clickable {
+	cursor: pointer;
+	transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.credential-card-clickable:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 6px 14px rgba(14, 63, 112, 0.1);
+}
+
 .credential-card h3 {
 	margin: 0 0 8px 0;
 	font-size: 1rem;
@@ -110,6 +120,47 @@
 .credential-card p {
 	margin: 4px 0;
 	color: #334f6b;
+}
+
+.credential-qr-hint {
+	margin-top: 8px;
+	font-size: 0.85rem;
+	color: #1d66a6;
+	font-weight: 600;
+}
+
+.credential-qr-modal {
+	width: 100%;
+	max-width: 420px;
+	background: #fff;
+	padding: 18px;
+	border-radius: 12px;
+	box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2);
+}
+
+.credential-qr-modal h2 {
+	margin: 0 0 12px;
+	font-size: 1.2rem;
+	color: #1f528c;
+}
+
+.credential-qr-modal p {
+	margin: 6px 0;
+}
+
+.credential-qr-code-wrap {
+	display: flex;
+	justify-content: center;
+	padding: 12px;
+	background: #f5f9ff;
+	border-radius: 10px;
+	margin: 12px 0;
+}
+
+.credential-qr-note {
+	font-size: 0.85rem;
+	color: #5b6f87;
+	margin-bottom: 12px;
 }
 
 .patient-stats {

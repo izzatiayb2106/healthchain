@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { getIdentityByDid, getIdentityByWallet, upsertIdentity } from "../services/authServices";
 import { listIssuedCredentialsBySubject, saveIssuedCredential } from "../services/credentialServices";
 import { ensureDidForWallet } from "../services/didService";
+import { createCredentialQrSession, getCredentialQrSession } from "../services/credentialQrService";
 
 function getWalletAuth(req: express.Request) {
   const wallet = String(req.header("x-user-wallet") || "").trim().toLowerCase();
@@ -32,6 +33,22 @@ async function resolveIdentityBySignedWallet(req: express.Request) {
 
 export default function credentialRoutes(agent: any) {
   const router = express.Router();
+
+  const resolveQrToken = (tokenOrPayload: string) => {
+    const raw = String(tokenOrPayload || "").trim();
+    if (!raw) return "";
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && typeof parsed.token === "string") {
+        return parsed.token.trim();
+      }
+    } catch {
+      // Not JSON, treat as direct token.
+    }
+
+    return raw;
+  };
 
   router.post("/issue", async (req, res) => {
     try {
@@ -148,6 +165,100 @@ export default function credentialRoutes(agent: any) {
         return res.status(404).json({ error: message });
       }
       res.status(500).json({ error: "Failed to load received credentials" });
+    }
+  });
+
+  router.post("/qr/create", async (req, res) => {
+    try {
+      const identity = await resolveIdentityBySignedWallet(req);
+      if (identity.role !== "patient") {
+        return res.status(403).json({ error: "Patient role required" });
+      }
+
+      const issuedAt = String(req.body.issuedAt || "").trim();
+      const credentialType = String(req.body.credentialType || "").trim();
+      if (!issuedAt) {
+        return res.status(400).json({ error: "issuedAt is required" });
+      }
+
+      const issued = await listIssuedCredentialsBySubject(identity.did);
+      const target = issued.find(
+        (entry) =>
+          String(entry.issuedAt || "").trim() === issuedAt &&
+          (!credentialType || String(entry.credentialType || "").trim() === credentialType)
+      );
+
+      if (!target) {
+        return res.status(404).json({ error: "Credential not found for patient" });
+      }
+
+      const session = await createCredentialQrSession({
+        subjectDid: identity.did,
+        issuedAt: target.issuedAt,
+        credentialType: target.credentialType,
+        credential: target.credential,
+        createdByWallet: identity.wallet,
+        ttlSeconds: 600,
+      });
+
+      const qrPayload = JSON.stringify({
+        type: "healthchain-credential-qr",
+        token: session.token,
+      });
+
+      return res.status(201).json({
+        success: true,
+        qrPayload,
+        expiresAt: session.expiresAt,
+      });
+    } catch (error) {
+      console.error(error);
+      const message = (error as any)?.message || "Failed to create credential QR";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Identity not found for wallet") {
+        return res.status(404).json({ error: message });
+      }
+      return res.status(500).json({ error: "Failed to create credential QR" });
+    }
+  });
+
+  router.post("/qr/redeem", async (req, res) => {
+    try {
+      const identity = await resolveIdentityBySignedWallet(req);
+      if (identity.role !== "verifier") {
+        return res.status(403).json({ error: "Verifier role required" });
+      }
+
+      const token = resolveQrToken(String(req.body.tokenOrPayload || req.body.token || ""));
+      if (!token) {
+        return res.status(400).json({ error: "tokenOrPayload is required" });
+      }
+
+      const session = await getCredentialQrSession(token);
+      if (!session) {
+        return res.status(404).json({ error: "QR token is invalid or expired" });
+      }
+
+      return res.json({
+        success: true,
+        verifiedBy: identity.did,
+        subjectDid: session.subjectDid,
+        issuedAt: session.issuedAt,
+        credentialType: session.credentialType,
+        credential: session.credential,
+      });
+    } catch (error) {
+      console.error(error);
+      const message = (error as any)?.message || "Failed to redeem credential QR";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Identity not found for wallet") {
+        return res.status(404).json({ error: message });
+      }
+      return res.status(500).json({ error: "Failed to redeem credential QR" });
     }
   });
 
