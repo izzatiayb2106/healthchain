@@ -6,6 +6,7 @@ export type MinistryLicenseRecord = {
   fullName: string
   licenseType: string
   specialty: string
+  role?: 'doctor' | 'verifier'
   status: 'active' | 'suspended' | 'expired'
   validUntil: string
   linkedWallet?: string
@@ -58,4 +59,18 @@ export async function getMinistryLicenseByProfessionalId(professionalId: string)
 export function canLicenseBeIssuedToWallet(record: MinistryLicenseRecord, wallet: string) {
   if (!record.linkedWallet) return true
   return normalizeWallet(record.linkedWallet) === normalizeWallet(wallet)
+}
+
+export function resolveProfessionalAccessRole(record: MinistryLicenseRecord): 'doctor' | 'verifier' {
+  const explicitRole = String(record.role || '').trim().toLowerCase()
+  if (explicitRole === 'doctor' || explicitRole === 'verifier') {
+    return explicitRole
+  }
+
+  const licenseType = String(record.licenseType || '').trim().toLowerCase()
+  if (licenseType.includes('medical') || licenseType.includes('doctor') || licenseType.includes('physician')) {
+    return 'doctor'
+  }
+
+  return 'verifier'
 }

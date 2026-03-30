@@ -69,7 +69,7 @@ const PatientDashboard: React.FC = () => {
 
 	const [showDoctorApply, setShowDoctorApply] = useState(false);
 	const [professionalId, setProfessionalId] = useState('');
-	const [credentialJwt, setCredentialJwt] = useState('');
+	const [requestedRole, setRequestedRole] = useState<'doctor' | 'verifier'>('doctor');
 	const [applyError, setApplyError] = useState<string | null>(null);
 	const [applySuccess, setApplySuccess] = useState<string | null>(null);
 	const [isApplying, setIsApplying] = useState(false);
@@ -230,8 +230,8 @@ const PatientDashboard: React.FC = () => {
 				return;
 			}
 
-			if (!professionalId.trim() || !credentialJwt.trim()) {
-				setApplyError('Professional ID and Verifiable Credential are required.');
+			if (!professionalId.trim()) {
+				setApplyError('Professional ID is required.');
 				return;
 			}
 
@@ -243,21 +243,20 @@ const PatientDashboard: React.FC = () => {
 			const message = `Doctor access application for ${address} at ${new Date().toISOString()}`;
 			const signature = await signer.signMessage(message);
 
-			await axios.post('http://localhost:3001/auth/doctor/apply-vc', {
+			await axios.post('http://localhost:3001/auth/professional/access', {
 				address,
 				did,
 				professionalId: professionalId.trim(),
-				credentialJwt: credentialJwt.trim(),
+				requestedRole,
 				message,
 				signature,
 			});
 
-			setApplySuccess('Your credential has been verified and your Doctor role is now active. Log in again to enter the Doctor dashboard.');
+			setApplySuccess(`Professional access approved. Your ${requestedRole} role is now active. Log in again to open the ${requestedRole} dashboard.`);
 			setProfessionalId('');
-			setCredentialJwt('');
 		} catch (error: any) {
 			const details = error?.response?.data?.details || error?.response?.data?.error;
-			setApplyError(details || 'Doctor access request failed. Please verify your VC and try again.');
+			setApplyError(details || 'Professional access request failed. Please verify your Professional ID and wallet.');
 		} finally {
 			setIsApplying(false);
 		}
@@ -529,15 +528,15 @@ const PatientDashboard: React.FC = () => {
 			<section className="doctor-apply-card">
 				<h2>Professional Access</h2>
 				<p>
-					Are you a medical professional?
+					Apply as doctor or verifier using your Professional ID from the whitelist.
 				</p>
 				<button className="btn request" onClick={() => setShowDoctorApply(prev => !prev)}>
-					{showDoctorApply ? 'Hide Doctor Application' : 'Apply for Doctor Access'}
+					{showDoctorApply ? 'Hide Professional Access Form' : 'Apply for Professional Access'}
 				</button>
 
 				{showDoctorApply ? (
 					<form className="doctor-apply-form" onSubmit={applyForDoctorAccess}>
-						<label htmlFor="professionalId">Medical license or employee ID</label>
+						<label htmlFor="professionalId">Medical license or Professional ID</label>
 						<input
 							id="professionalId"
 							type="text"
@@ -547,14 +546,11 @@ const PatientDashboard: React.FC = () => {
 							required
 						/>
 
-						<label htmlFor="credentialJwt">Ministry-issued Verifiable Credential (JWT)</label>
-						<textarea
-							id="credentialJwt"
-							value={credentialJwt}
-							onChange={(event) => setCredentialJwt(event.target.value)}
-							placeholder="Paste your signed VC JWT here"
-							required
-						/>
+						<label htmlFor="requestedRole">Requested role</label>
+						<select id="requestedRole" value={requestedRole} onChange={(event) => setRequestedRole(event.target.value as 'doctor' | 'verifier')}>
+							<option value="doctor">Doctor</option>
+							<option value="verifier">Verifier</option>
+						</select>
 
 						{applyError ? <div className="doctor-apply-error">{applyError}</div> : null}
 						{applySuccess ? <div className="doctor-apply-success">{applySuccess}</div> : null}
