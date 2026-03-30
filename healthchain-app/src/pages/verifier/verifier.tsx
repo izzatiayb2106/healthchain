@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import { Html5Qrcode } from 'html5-qrcode';
 import './verifier.css';
 
-type RedeemedCredential = {
+type VerifiedCredential = {
 	verifiedBy: string;
 	subjectDid: string;
 	issuedAt: string;
@@ -17,9 +17,9 @@ const VerifierDashboard: React.FC = () => {
 	const scannerRef = useRef<Html5Qrcode | null>(null);
 
 	const [tokenOrPayload, setTokenOrPayload] = useState('');
-	const [redeeming, setRedeeming] = useState(false);
+	const [verifying, setVerifying] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [result, setResult] = useState<RedeemedCredential | null>(null);
+	const [result, setResult] = useState<VerifiedCredential | null>(null);
 	const [scanError, setScanError] = useState<string | null>(null);
 	const [isScanning, setIsScanning] = useState(false);
 
@@ -70,8 +70,8 @@ const VerifierDashboard: React.FC = () => {
 		window.location.href = '/login';
 	};
 
-	const redeemQrValue = async (rawValue: string) => {
-		if (redeeming) return;
+	const verifyQrValue = async (rawValue: string) => {
+		if (verifying) return;
 
 		const value = rawValue.trim();
 		if (!value) {
@@ -80,27 +80,30 @@ const VerifierDashboard: React.FC = () => {
 		}
 
 		try {
-			setRedeeming(true);
+			setVerifying(true);
 			setError(null);
 			setResult(null);
 			const headers = await buildAuthHeaders();
 			const response = await axios.post(
-				'http://localhost:3001/credential/qr/redeem',
+				'http://localhost:3001/credential/qr/verify',
 				{ tokenOrPayload: value },
 				{ headers }
 			);
-			setResult(response.data as RedeemedCredential);
+			setResult(response.data as VerifiedCredential);
 		} catch (err: any) {
-			const detail = err?.response?.data?.error || err?.message || 'Failed to redeem credential QR';
+			const detail = err?.response?.data?.error || err?.message || 'Failed to verify credential QR';
 			setError(detail);
+			if (detail.toLowerCase().includes('token is invalid') || detail.toLowerCase().includes('invalid or expired')) {
+				window.alert('Token invalid or expired. Please generate a new QR from the latest patient credential card.');
+			}
 		} finally {
-			setRedeeming(false);
+			setVerifying(false);
 		}
 	};
 
-	const redeemQr = async (event: React.FormEvent) => {
+	const verifyQr = async (event: React.FormEvent) => {
 		event.preventDefault();
-		await redeemQrValue(tokenOrPayload);
+		await verifyQrValue(tokenOrPayload);
 	};
 
 	const stopScanner = async () => {
@@ -145,7 +148,7 @@ const VerifierDashboard: React.FC = () => {
 				{ fps: 10, qrbox: { width: 250, height: 250 } },
 				(decodedText) => {
 					setTokenOrPayload(decodedText);
-					void redeemQrValue(decodedText);
+					void verifyQrValue(decodedText);
 					void stopScanner();
 				},
 				() => {
@@ -177,10 +180,10 @@ const VerifierDashboard: React.FC = () => {
 			</header>
 
 			<section className="verifier-panel">
-				<h2>Redeem Credential QR</h2>
-				<p>Scan using camera or paste QR text. Only verifier-role wallets can redeem it.</p>
+				<h2>Verify Credential QR</h2>
+				<p>Scan using camera or paste QR text. Only verifier-role wallets can verify it.</p>
 				<div className="scanner-actions">
-					<button className="btn approve" type="button" onClick={() => void startScanner()} disabled={isScanning || redeeming}>
+					<button className="btn approve" type="button" onClick={() => void startScanner()} disabled={isScanning || verifying}>
 						{isScanning ? 'Scanner Running...' : 'Start Camera Scan'}
 					</button>
 					<button className="btn logout" type="button" onClick={() => void stopScanner()} disabled={!isScanning}>
@@ -189,15 +192,15 @@ const VerifierDashboard: React.FC = () => {
 				</div>
 				<div id={readerElementId} className="scanner-reader" />
 				{scanError ? <div className="verifier-error">{scanError}</div> : null}
-				<form onSubmit={redeemQr} className="verifier-redeem-form">
+				<form onSubmit={verifyQr} className="verifier-redeem-form">
 					<textarea
 						value={tokenOrPayload}
 						onChange={(event) => setTokenOrPayload(event.target.value)}
 						placeholder='Paste scanned payload e.g. {"type":"healthchain-credential-qr","token":"..."}'
-						disabled={redeeming}
+						disabled={verifying}
 					/>
-					<button className="btn approve" type="submit" disabled={redeeming}>
-						{redeeming ? 'Redeeming...' : 'Redeem QR Credential'}
+					<button className="btn approve" type="submit" disabled={verifying}>
+						{verifying ? 'Verifying...' : 'Verify QR Credential'}
 					</button>
 				</form>
 				{error ? <div className="verifier-error">{error}</div> : null}

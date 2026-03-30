@@ -209,7 +209,12 @@ export default function credentialRoutes(agent: any) {
       return res.status(201).json({
         success: true,
         qrPayload,
+        serverNowUtc: new Date().toISOString(),
+        serverNowEpochMs: Date.now(),
         expiresAt: session.expiresAt,
+        expiresAtUtc: session.expiresAt,
+        expiresAtEpochMs: new Date(session.expiresAt).getTime(),
+        expiresInSeconds: Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000)),
       });
     } catch (error) {
       console.error(error);
@@ -224,7 +229,7 @@ export default function credentialRoutes(agent: any) {
     }
   });
 
-  router.post("/qr/redeem", async (req, res) => {
+  const verifyQrHandler: express.RequestHandler = async (req, res) => {
     try {
       const identity = await resolveIdentityBySignedWallet(req);
       if (identity.role !== "verifier") {
@@ -238,12 +243,32 @@ export default function credentialRoutes(agent: any) {
 
       const session = await getCredentialQrSession(token);
       if (!session) {
-        return res.status(404).json({ error: "QR token is invalid or expired" });
+        return res.status(404).json({
+          error: "QR token is invalid or expired",
+          serverNowUtc: new Date().toISOString(),
+          serverNowEpochMs: Date.now(),
+          hint: "Generate a new QR payload from the patient credential card and verify it within the active TTL window.",
+        });
+      }
+
+      const credentialForVerification =
+        typeof session.credential === "string"
+          ? session.credential
+          : String(session.credential?.proof?.jwt || "").trim() || session.credential;
+
+      const verification = await agent.verifyCredential({
+        credential: credentialForVerification,
+      });
+
+      if (verification?.verified === false) {
+        return res.status(400).json({ error: "Credential signature verification failed" });
       }
 
       return res.json({
         success: true,
         verifiedBy: identity.did,
+        credentialVerified: true,
+        verifiedAtUtc: new Date().toISOString(),
         subjectDid: session.subjectDid,
         issuedAt: session.issuedAt,
         credentialType: session.credentialType,
@@ -251,16 +276,19 @@ export default function credentialRoutes(agent: any) {
       });
     } catch (error) {
       console.error(error);
-      const message = (error as any)?.message || "Failed to redeem credential QR";
+      const message = (error as any)?.message || "Failed to verify credential QR";
       if (message === "Missing user authentication headers" || message === "Invalid user signature") {
         return res.status(401).json({ error: message });
       }
       if (message === "Identity not found for wallet") {
         return res.status(404).json({ error: message });
       }
-      return res.status(500).json({ error: "Failed to redeem credential QR" });
+      return res.status(500).json({ error: "Failed to verify credential QR" });
     }
-  });
+  };
+
+  router.post("/qr/verify", verifyQrHandler);
+  router.post("/qr/redeem", verifyQrHandler);
 
   return router;
 }

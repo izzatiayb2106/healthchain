@@ -36,6 +36,11 @@ type DoctorIssuedCredential = {
 type QrSession = {
 	qrPayload: string;
 	expiresAt: string;
+	expiresAtUtc?: string;
+	serverNowUtc?: string;
+	serverNowEpochMs?: number;
+	expiresAtEpochMs?: number;
+	expiresInSeconds?: number;
 	issuedAt: string;
 	credentialType: string;
 };
@@ -76,6 +81,7 @@ const PatientDashboard: React.FC = () => {
 	const [qrLoadingForIssuedAt, setQrLoadingForIssuedAt] = useState<string | null>(null);
 	const [qrError, setQrError] = useState<string | null>(null);
 	const [qrSession, setQrSession] = useState<QrSession | null>(null);
+	const [qrSecondsRemaining, setQrSecondsRemaining] = useState<number>(0);
 
 	const buildAuthHeaders = async () => {
 		const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
@@ -162,6 +168,30 @@ const PatientDashboard: React.FC = () => {
 
 		void loadDashboardData();
 	}, []);
+
+	useEffect(() => {
+		if (!qrSession) {
+			setQrSecondsRemaining(0);
+			return;
+		}
+
+		const expiresAtEpochMs = Number(qrSession.expiresAtEpochMs || 0);
+		const serverNowEpochMs = Number(qrSession.serverNowEpochMs || 0);
+		if (!expiresAtEpochMs || !serverNowEpochMs) {
+			setQrSecondsRemaining(Math.max(0, Number(qrSession.expiresInSeconds || 0)));
+			return;
+		}
+
+		const clientSkewMs = serverNowEpochMs - Date.now();
+		const tick = () => {
+			const serverAlignedNow = Date.now() + clientSkewMs;
+			setQrSecondsRemaining(Math.max(0, Math.floor((expiresAtEpochMs - serverAlignedNow) / 1000)));
+		};
+
+		tick();
+		const timer = window.setInterval(tick, 1000);
+		return () => window.clearInterval(timer);
+	}, [qrSession]);
 
 	const handleLogout = () => {
 		localStorage.removeItem('hc_wallet');
@@ -288,6 +318,11 @@ const PatientDashboard: React.FC = () => {
 			setQrSession({
 				qrPayload: String(response.data?.qrPayload || ''),
 				expiresAt: String(response.data?.expiresAt || ''),
+				expiresAtUtc: String(response.data?.expiresAtUtc || ''),
+				serverNowUtc: String(response.data?.serverNowUtc || ''),
+				serverNowEpochMs: Number(response.data?.serverNowEpochMs || 0),
+				expiresAtEpochMs: Number(response.data?.expiresAtEpochMs || 0),
+				expiresInSeconds: Number(response.data?.expiresInSeconds || 0),
 				issuedAt: entry.issuedAt,
 				credentialType: entry.credentialType,
 			});
@@ -301,6 +336,7 @@ const PatientDashboard: React.FC = () => {
 
 	const closeQrModal = () => {
 		setQrSession(null);
+		setQrSecondsRemaining(0);
 	};
 
 	const registerWithDoctor = async (event: React.FormEvent) => {
@@ -515,11 +551,14 @@ const PatientDashboard: React.FC = () => {
 						<h2>Verifier-Only Credential QR</h2>
 						<p><strong>Credential:</strong> {qrSession.credentialType}</p>
 						<p><strong>Issued:</strong> {new Date(qrSession.issuedAt).toLocaleString()}</p>
-						<p><strong>Expires:</strong> {qrSession.expiresAt ? new Date(qrSession.expiresAt).toLocaleString() : 'Soon'}</p>
+						<p><strong>Expires (local):</strong> {qrSession.expiresAt ? new Date(qrSession.expiresAt).toLocaleString() : 'Soon'}</p>
+						<p><strong>Expires (UTC):</strong> {qrSession.expiresAtUtc || qrSession.expiresAt || 'Soon'}</p>
+						<p><strong>Server time (UTC):</strong> {qrSession.serverNowUtc || 'N/A'}</p>
+						<p><strong>Remaining (seconds):</strong> {qrSecondsRemaining}</p>
 						<div className="credential-qr-code-wrap">
 							<QRCodeSVG value={qrSession.qrPayload} size={220} includeMargin />
 						</div>
-						<p className="credential-qr-note">Only users logged in with verifier role can redeem this QR token.</p>
+						<p className="credential-qr-note">Only users logged in with verifier role can verify this QR token. If token is expired, generate a fresh QR from this card and verify immediately.</p>
 						<button type="button" className="btn request" onClick={closeQrModal}>Close</button>
 					</div>
 				</div>

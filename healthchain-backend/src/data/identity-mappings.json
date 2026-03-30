@@ -22,14 +22,14 @@
       "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
       "role": "patient",
       "createdAt": "2026-03-17T07:47:52.343Z",
-      "updatedAt": "2026-03-30T08:24:45.426Z"
+      "updatedAt": "2026-03-30T15:25:12.790Z"
     },
     {
       "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
       "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
       "role": "verifier",
       "createdAt": "2026-03-30T08:02:05.873Z",
-      "updatedAt": "2026-03-30T09:25:01.132Z"
+      "updatedAt": "2026-03-30T15:25:44.754Z"
     }
   ]
 }
