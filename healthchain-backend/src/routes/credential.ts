@@ -1,9 +1,17 @@
 import express from "express";
 import { ethers } from "ethers";
+import { encrypt } from "@metamask/eth-sig-util";
 import { getIdentityByDid, getIdentityByWallet, upsertIdentity } from "../services/authServices";
 import { listIssuedCredentialsBySubject, saveIssuedCredential } from "../services/credentialServices";
 import { ensureDidForWallet } from "../services/didService";
 import { createCredentialQrSession, getCredentialQrSession } from "../services/credentialQrService";
+import { getPatientProfileByDid } from "../services/patientProfileService";
+import {
+  finalizeHybridCredential,
+  getHybridCredentialByCid,
+  payloadHashMatches,
+  storeHybridEncryptedCredential,
+} from "../services/hybridCredentialService";
 
 function getWalletAuth(req: express.Request) {
   const wallet = String(req.header("x-user-wallet") || "").trim().toLowerCase();
@@ -33,6 +41,15 @@ async function resolveIdentityBySignedWallet(req: express.Request) {
 
 export default function credentialRoutes(agent: any) {
   const router = express.Router();
+
+  const encryptForPatient = (publicKey: string, payload: string) => {
+    const encrypted = encrypt({
+      publicKey,
+      data: payload,
+      version: "x25519-xsalsa20-poly1305",
+    });
+    return `0x${Buffer.from(JSON.stringify(encrypted), "utf8").toString("hex")}`;
+  };
 
   const resolveQrToken = (tokenOrPayload: string) => {
     const raw = String(tokenOrPayload || "").trim();
@@ -125,6 +142,208 @@ export default function credentialRoutes(agent: any) {
         return res.status(404).json({ error: message });
       }
       res.status(500).json({ error: "Credential issuance failed", details: message });
+    }
+  });
+
+  router.post("/hybrid/prepare", async (req, res) => {
+    try {
+      const doctorIdentity = await resolveIdentityBySignedWallet(req);
+      if (doctorIdentity.role !== "doctor") {
+        return res.status(403).json({ error: "Doctor role required to issue credentials" });
+      }
+
+      const subjectInput = String(req.body.subjectDid || req.body.subject || "").trim();
+      if (!subjectInput) {
+        return res.status(400).json({ error: "subjectDid is required" });
+      }
+
+      let patientIdentity = await getIdentityByDid(subjectInput);
+      if (!patientIdentity && subjectInput.startsWith("0x")) {
+        patientIdentity = await getIdentityByWallet(subjectInput.toLowerCase());
+      }
+      if (!patientIdentity || patientIdentity.role !== "patient") {
+        return res.status(400).json({ error: "subjectDid must belong to an existing patient" });
+      }
+
+      const patientProfile = await getPatientProfileByDid(patientIdentity.did);
+      const encryptionPublicKey = String(patientProfile?.encryptionPublicKey || "").trim();
+      if (!encryptionPublicKey) {
+        return res.status(400).json({
+          error: "Patient encryption public key not registered",
+          hint: "Patient must open dashboard and approve encryption key registration once.",
+        });
+      }
+
+      const ensuredIssuer = await ensureDidForWallet(agent, doctorIdentity.wallet);
+      const issuerDid = String(ensuredIssuer.identifier?.did || doctorIdentity.did || "").trim();
+      if (!issuerDid) {
+        return res.status(500).json({ error: "Unable to resolve issuer DID for doctor wallet" });
+      }
+      if (issuerDid !== doctorIdentity.did) {
+        await upsertIdentity(doctorIdentity.wallet, issuerDid, doctorIdentity.role);
+      }
+
+      const credentialType = String(req.body.credentialType || "VaccinationCredential").trim() || "VaccinationCredential";
+      const issuedAt = new Date().toISOString();
+      const credential = await agent.createVerifiableCredential({
+        credential: {
+          issuer: { id: issuerDid },
+          issuanceDate: issuedAt,
+          credentialSubject: {
+            id: patientIdentity.did,
+            wallet: patientIdentity.wallet,
+            name: req.body.name,
+            role: req.body.role || "patient",
+            ...(req.body.credentialDetails && typeof req.body.credentialDetails === "object"
+              ? req.body.credentialDetails
+              : {}),
+          },
+          type: ["VerifiableCredential", credentialType],
+        },
+        proofFormat: "jwt",
+      });
+
+      const vcJwt =
+        typeof credential === "string"
+          ? credential
+          : String(credential?.proof?.jwt || "").trim();
+      if (!vcJwt) {
+        return res.status(500).json({ error: "Issued credential JWT is missing" });
+      }
+
+      const encryptedCredentialHex = encryptForPatient(encryptionPublicKey, vcJwt);
+      const stored = await storeHybridEncryptedCredential({
+        encryptedCredentialHex,
+        subjectDid: patientIdentity.did,
+        subjectWallet: patientIdentity.wallet,
+        issuerDid,
+        credentialType,
+        issuedAt,
+      });
+
+      await saveIssuedCredential(patientIdentity.did, credentialType, credential);
+
+      return res.status(201).json({
+        success: true,
+        mode: "hybrid",
+        storageMode: stored.storageMode,
+        issuedTo: patientIdentity.did,
+        patientWallet: patientIdentity.wallet,
+        issuerDid,
+        credentialType,
+        cid: stored.cid,
+        payloadHash: stored.payloadHash,
+        issuedAt,
+      });
+    } catch (error) {
+      console.error(error);
+      const message = (error as any)?.message || "Hybrid credential preparation failed";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Identity not found for wallet") {
+        return res.status(404).json({ error: message });
+      }
+      return res.status(500).json({ error: "Hybrid credential preparation failed", details: message });
+    }
+  });
+
+  router.post("/hybrid/finalize", async (req, res) => {
+    try {
+      const doctorIdentity = await resolveIdentityBySignedWallet(req);
+      if (doctorIdentity.role !== "doctor") {
+        return res.status(403).json({ error: "Doctor role required to finalize issuance" });
+      }
+
+      const cid = String(req.body.cid || "").trim();
+      const txHash = String(req.body.txHash || "").trim();
+      const recordId = String(req.body.recordId || "").trim();
+      const chainId = String(req.body.chainId || "").trim();
+      const contractAddress = String(req.body.contractAddress || "").trim().toLowerCase();
+
+      if (!cid || !txHash || !recordId || !chainId || !contractAddress) {
+        return res.status(400).json({ error: "cid, txHash, recordId, chainId and contractAddress are required" });
+      }
+
+      const finalized = await finalizeHybridCredential({
+        cid,
+        txHash,
+        chainId,
+        contractAddress,
+        recordId,
+      });
+
+      return res.json({ success: true, record: finalized });
+    } catch (error) {
+      console.error(error);
+      const message = (error as any)?.message || "Failed to finalize hybrid credential";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Identity not found for wallet") {
+        return res.status(404).json({ error: message });
+      }
+      if (message === "Hybrid credential record not found for cid") {
+        return res.status(404).json({ error: message });
+      }
+      return res.status(500).json({ error: "Failed to finalize hybrid credential" });
+    }
+  });
+
+  router.get("/hybrid/cid/:cid", async (req, res) => {
+    try {
+      const identity = await resolveIdentityBySignedWallet(req);
+      const cid = String(req.params.cid || "").trim();
+      if (!cid) {
+        return res.status(400).json({ error: "cid is required" });
+      }
+
+      const found = await getHybridCredentialByCid(cid);
+      if (!found) {
+        return res.status(404).json({ error: "Encrypted payload not found for cid" });
+      }
+
+      if (identity.role === "patient" && found.subjectDid !== identity.did) {
+        return res.status(403).json({ error: "Patient can only access own encrypted credential" });
+      }
+
+      return res.json({
+        success: true,
+        cid: found.cid,
+        payloadHash: found.payloadHash,
+        encryptedCredentialHex: found.encryptedCredentialHex,
+        credentialType: found.credentialType,
+        issuedAt: found.issuedAt,
+        contractAddress: found.contractAddress || null,
+        recordId: found.recordId || null,
+      });
+    } catch (error) {
+      console.error(error);
+      const message = (error as any)?.message || "Failed to fetch encrypted payload";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Identity not found for wallet") {
+        return res.status(404).json({ error: message });
+      }
+      return res.status(500).json({ error: "Failed to fetch encrypted payload" });
+    }
+  });
+
+  router.post("/hybrid/validate-payload", async (req, res) => {
+    try {
+      const payloadHash = String(req.body.payloadHash || "").trim();
+      const encryptedCredentialHex = String(req.body.encryptedCredentialHex || "").trim();
+      if (!payloadHash || !encryptedCredentialHex) {
+        return res.status(400).json({ error: "payloadHash and encryptedCredentialHex are required" });
+      }
+
+      return res.json({
+        success: true,
+        matches: payloadHashMatches(payloadHash, encryptedCredentialHex),
+      });
+    } catch {
+      return res.status(500).json({ error: "Failed to validate payload hash" });
     }
   });
 

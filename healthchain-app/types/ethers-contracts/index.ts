@@ -2,5 +2,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { Counter } from './Counter.js';
+export type { CredentialRegistry } from './CredentialRegistry.js';
 export * as factories from './factories/index.js';
 export { Counter__factory } from './factories/Counter__factory.js';
+export { CredentialRegistry__factory } from './factories/CredentialRegistry__factory.js';

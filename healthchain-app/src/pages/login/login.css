@@ -69,13 +69,13 @@ input:disabled {
 }
 
 .btn.primary {
-	background: #0b66d8;
+	background: #575799;
 	color: #fff;
 }
 
 .btn.link {
 	background: transparent;
-	color: #0b66d8;
+	color: #575799;
 	font-weight: 600;
 	padding: 6px;
 }

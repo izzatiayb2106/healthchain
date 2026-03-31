@@ -10,6 +10,7 @@ export type PatientProfile = {
   phone: string;
   email: string;
   emergencyContact: string;
+  encryptionPublicKey?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -75,6 +76,7 @@ export async function upsertPatientProfile(input: {
   phone?: string;
   email?: string;
   emergencyContact?: string;
+  encryptionPublicKey?: string;
 }) {
   const did = normalizeDid(input.did);
   const wallet = normalizeWallet(input.wallet);
@@ -94,6 +96,7 @@ export async function upsertPatientProfile(input: {
     if (typeof input.phone === "string") existing.phone = input.phone.trim();
     if (typeof input.email === "string") existing.email = input.email.trim();
     if (typeof input.emergencyContact === "string") existing.emergencyContact = input.emergencyContact.trim();
+    if (typeof input.encryptionPublicKey === "string") existing.encryptionPublicKey = input.encryptionPublicKey.trim();
     existing.updatedAt = now;
     await writeStore(store);
     return existing;
@@ -108,6 +111,7 @@ export async function upsertPatientProfile(input: {
     phone: String(input.phone || "").trim(),
     email: String(input.email || "").trim(),
     emergencyContact: String(input.emergencyContact || "").trim(),
+    encryptionPublicKey: String(input.encryptionPublicKey || "").trim(),
     createdAt: now,
     updatedAt: now,
   };

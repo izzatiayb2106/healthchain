@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
+import { getCredentialRegistryContract, getCredentialRegistryAddress } from '../../blockchain/credentialRegistry';
 import './doctor.css';
 
 type DoctorProfile = {
@@ -298,13 +299,28 @@ const DoctorDashboard: React.FC = () => {
             return;
         }
 
+        if (!getCredentialRegistryAddress()) {
+            setCredentialError('Credential registry contract address is not configured. Set VITE_CREDENTIAL_REGISTRY_ADDRESS.');
+            return;
+        }
+
         try {
             setCredentialLoading(true);
             setCredentialError(null);
             const headers = await buildAuthHeaders();
 
-            const response = await axios.post(
-                'http://localhost:3001/credential/issue',
+            if (!(window as any).ethereum) {
+                throw new Error('MetaMask is required for blockchain issuance.');
+            }
+
+            const provider = new ethers.BrowserProvider((window as any).ethereum);
+            await provider.send('eth_requestAccounts', []);
+            const signer = await provider.getSigner();
+            const contract = getCredentialRegistryContract(signer);
+            const network = await provider.getNetwork();
+
+            const prepareResponse = await axios.post(
+                'http://localhost:3001/credential/hybrid/prepare',
                 {
                     subjectDid: selectedPatient.did,
                     subjectWallet: selectedPatient.wallet,
@@ -325,7 +341,40 @@ const DoctorDashboard: React.FC = () => {
                 },
                 { headers }
             );
-            alert(`Credential issued successfully!\n\nIssued to: ${response.data?.issuedTo}\nCredential type: ${response.data?.credentialType}`);
+
+            const cid = String(prepareResponse.data?.cid || '');
+            const payloadHash = String(prepareResponse.data?.payloadHash || '');
+            const patientWallet = String(prepareResponse.data?.patientWallet || selectedPatient.wallet || '').toLowerCase();
+            const credentialType = String(prepareResponse.data?.credentialType || 'VaccinationCredential');
+            if (!cid || !payloadHash || !patientWallet) {
+                throw new Error('Hybrid preparation did not return cid/payloadHash/patient wallet.');
+            }
+
+            const predictedRecordId = await contract.issueRecord.staticCall(patientWallet, cid, payloadHash, credentialType);
+            const tx = await contract.issueRecord(patientWallet, cid, payloadHash, credentialType);
+            const receipt = await tx.wait();
+
+            await axios.post(
+                'http://localhost:3001/credential/hybrid/finalize',
+                {
+                    cid,
+                    txHash: tx.hash,
+                    recordId: String(predictedRecordId),
+                    chainId: String(network.chainId),
+                    contractAddress: getCredentialRegistryAddress(),
+                },
+                { headers }
+            );
+
+            alert(
+                `Credential issued successfully!\n\n` +
+                `Issued to: ${prepareResponse.data?.issuedTo}\n` +
+                `Credential type: ${credentialType}\n` +
+                `CID: ${cid}\n` +
+                `Record ID: ${String(predictedRecordId)}\n` +
+                `Tx Hash: ${tx.hash}\n` +
+                `Block: ${receipt?.blockNumber ?? 'pending'}`
+            );
             setVaccineForm(initialVaccineForm);
             setShowIssueCredentialModal(false);
             await loadPatientCredentials(selectedPatient);

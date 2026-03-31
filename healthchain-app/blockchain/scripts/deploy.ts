@@ -3,14 +3,14 @@ import { network } from "hardhat";
 async function main() {
   const { ethers } = await network.connect();
 
-  const Counter = await ethers.deployContract("Counter");
+  const registry = await ethers.deployContract("CredentialRegistry");
 
-  await Counter.waitForDeployment();
+  await registry.waitForDeployment();
 
-  console.log("Counter deployed to:", await Counter.getAddress());
+  console.log("CredentialRegistry deployed to:", await registry.getAddress());
 }
 
 main().catch((error) => {
   console.error(error);
-  process.exitCode = 1;
+  throw error;
 });

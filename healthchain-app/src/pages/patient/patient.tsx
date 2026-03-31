@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
 import { QRCodeSVG } from 'qrcode.react';
+import { getCredentialRegistryAddress, getCredentialRegistryContract, mapChainRecordTuple, type HybridChainRecord } from '../../blockchain/credentialRegistry';
 import './patient.css';
 
 declare global {
@@ -45,6 +46,12 @@ type QrSession = {
 	credentialType: string;
 };
 
+type HybridDecryptedView = {
+	vcJwt: string;
+	payloadHash: string;
+	cid: string;
+};
+
 const emptyProfileForm = {
 	fullName: '',
 	dateOfBirth: '',
@@ -82,6 +89,12 @@ const PatientDashboard: React.FC = () => {
 	const [qrError, setQrError] = useState<string | null>(null);
 	const [qrSession, setQrSession] = useState<QrSession | null>(null);
 	const [qrSecondsRemaining, setQrSecondsRemaining] = useState<number>(0);
+	const [hybridRecords, setHybridRecords] = useState<HybridChainRecord[]>([]);
+	const [hybridLoading, setHybridLoading] = useState(false);
+	const [hybridError, setHybridError] = useState<string | null>(null);
+	const [selectedHybridRecordId, setSelectedHybridRecordId] = useState<string | null>(null);
+	const [hybridDecrypted, setHybridDecrypted] = useState<HybridDecryptedView | null>(null);
+	const [hybridQrPayload, setHybridQrPayload] = useState<string | null>(null);
 
 	const buildAuthHeaders = async () => {
 		const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
@@ -159,6 +172,134 @@ const PatientDashboard: React.FC = () => {
 		}
 	};
 
+	const registerEncryptionPublicKey = async () => {
+		try {
+			if (!window.ethereum) return;
+			const wallet = String(localStorage.getItem('hc_wallet') || '').trim();
+			if (!wallet) return;
+
+			const headers = await buildAuthHeaders();
+			const encryptionPublicKey = await window.ethereum.request({
+				method: 'eth_getEncryptionPublicKey',
+				params: [wallet],
+			});
+
+			if (!String(encryptionPublicKey || '').trim()) return;
+
+			await axios.post(
+				'http://localhost:3001/patient/profile/me/encryption-key',
+				{ encryptionPublicKey },
+				{ headers }
+			);
+		} catch {
+			// User may reject permission. Hybrid issuance can be retried after consent.
+		}
+	};
+
+	const loadHybridRecords = async () => {
+		try {
+			setHybridLoading(true);
+			setHybridError(null);
+			setHybridDecrypted(null);
+
+			if (!window.ethereum) {
+				setHybridError('MetaMask is required to load on-chain records.');
+				return;
+			}
+
+			const registryAddress = getCredentialRegistryAddress();
+			if (!registryAddress) {
+				setHybridError('VITE_CREDENTIAL_REGISTRY_ADDRESS is not configured.');
+				return;
+			}
+
+			const provider = new ethers.BrowserProvider(window.ethereum);
+			await provider.send('eth_requestAccounts', []);
+			const signer = await provider.getSigner();
+			const wallet = (await signer.getAddress()).toLowerCase();
+			const contract = getCredentialRegistryContract(provider);
+
+			const count = Number(await contract.getPatientRecordCount(wallet));
+			const records: HybridChainRecord[] = [];
+			for (let index = 0; index < count; index += 1) {
+				const tuple = await contract.getPatientRecordAt(wallet, index);
+				records.push(mapChainRecordTuple(tuple));
+			}
+
+			records.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
+			setHybridRecords(records);
+		} catch (error: any) {
+			const detail = error?.response?.data?.error || error?.message || 'Failed to load on-chain records';
+			setHybridError(detail);
+		} finally {
+			setHybridLoading(false);
+		}
+	};
+
+	const decryptHybridRecord = async (record: HybridChainRecord) => {
+		try {
+			setSelectedHybridRecordId(record.recordId);
+			setHybridError(null);
+			setHybridDecrypted(null);
+
+			if (!window.ethereum) {
+				setHybridError('MetaMask is required for decryption.');
+				return;
+			}
+
+			const headers = await buildAuthHeaders();
+			const payloadRes = await axios.get(`http://localhost:3001/credential/hybrid/cid/${encodeURIComponent(record.cid)}`, { headers });
+			const encryptedCredentialHex = String(payloadRes.data?.encryptedCredentialHex || '').trim();
+			const expectedHash = String(payloadRes.data?.payloadHash || record.payloadHash || '').trim();
+			if (!encryptedCredentialHex) {
+				setHybridError('Encrypted payload not found for selected record.');
+				return;
+			}
+
+			const validateRes = await axios.post('http://localhost:3001/credential/hybrid/validate-payload', {
+				payloadHash: expectedHash,
+				encryptedCredentialHex,
+			});
+			if (!Boolean(validateRes.data?.matches)) {
+				setHybridError('Integrity check failed. Payload hash mismatch.');
+				return;
+			}
+
+			const wallet = String(localStorage.getItem('hc_wallet') || '').trim();
+			const vcJwt = await window.ethereum.request({
+				method: 'eth_decrypt',
+				params: [encryptedCredentialHex, wallet],
+			});
+
+			setHybridDecrypted({
+				vcJwt: String(vcJwt || ''),
+				payloadHash: expectedHash,
+				cid: record.cid,
+			});
+		} catch (error: any) {
+			const detail = error?.response?.data?.error || error?.message || 'Failed to decrypt on-chain record';
+			setHybridError(detail);
+		} finally {
+			setSelectedHybridRecordId(null);
+		}
+	};
+
+	const openHybridQr = (record: HybridChainRecord) => {
+		const contractAddress = getCredentialRegistryAddress();
+		if (!contractAddress) {
+			setHybridError('VITE_CREDENTIAL_REGISTRY_ADDRESS is not configured.');
+			return;
+		}
+
+		setHybridQrPayload(JSON.stringify({
+			type: 'healthchain-hybrid-record',
+			contractAddress,
+			recordId: record.recordId,
+			cid: record.cid,
+			payloadHash: record.payloadHash,
+		}));
+	};
+
 	useEffect(() => {
 		const role = String(localStorage.getItem('hc_role') || '').toLowerCase();
 		if (role !== 'patient') {
@@ -167,6 +308,8 @@ const PatientDashboard: React.FC = () => {
 		}
 
 		void loadDashboardData();
+		void registerEncryptionPublicKey();
+		void loadHybridRecords();
 	}, []);
 
 	useEffect(() => {
@@ -545,6 +688,53 @@ const PatientDashboard: React.FC = () => {
 				</div>
 			</section>
 
+			<section className="patient-card">
+				<h2>On-Chain Hybrid Records</h2>
+				<p>Records are validated from blockchain and decrypted locally with your wallet key.</p>
+				<div className="scanner-actions">
+					<button className="btn request" type="button" onClick={() => void loadHybridRecords()} disabled={hybridLoading}>
+						{hybridLoading ? 'Refreshing records...' : 'Refresh On-Chain Records'}
+					</button>
+				</div>
+				{hybridError ? <div className="doctor-apply-error">{hybridError}</div> : null}
+				{hybridLoading ? <p>Loading on-chain records...</p> : null}
+				{!hybridLoading && hybridRecords.length === 0 ? <p>No on-chain records found yet.</p> : null}
+
+				<div className="credential-list">
+					{hybridRecords.map((record) => (
+						<article key={record.recordId} className="credential-card">
+							<h3>{record.credentialType}</h3>
+							<p><strong>Record ID:</strong> {record.recordId}</p>
+							<p><strong>CID:</strong> {record.cid}</p>
+							<p><strong>Hash:</strong> {record.payloadHash}</p>
+							<p><strong>Issued:</strong> {new Date(record.issuedAt).toLocaleString()}</p>
+							<div className="scanner-actions">
+								<button
+									type="button"
+									className="btn request"
+									onClick={() => void decryptHybridRecord(record)}
+									disabled={selectedHybridRecordId === record.recordId}
+								>
+									{selectedHybridRecordId === record.recordId ? 'Decrypting...' : 'Decrypt with Wallet'}
+								</button>
+								<button type="button" className="btn request" onClick={() => openHybridQr(record)}>
+									Generate Verification QR
+								</button>
+							</div>
+						</article>
+					))}
+				</div>
+
+				{hybridDecrypted ? (
+					<div className="patient-card" style={{ marginTop: '12px' }}>
+						<h3>Decrypted Credential JWT</h3>
+						<p><strong>CID:</strong> {hybridDecrypted.cid}</p>
+						<p><strong>Payload Hash:</strong> {hybridDecrypted.payloadHash}</p>
+						<textarea readOnly value={hybridDecrypted.vcJwt} style={{ width: '100%', minHeight: '120px' }} />
+					</div>
+				) : null}
+			</section>
+
 			{qrSession ? (
 				<div className="modal-overlay" onClick={closeQrModal}>
 					<div className="credential-qr-modal" onClick={(event) => event.stopPropagation()}>
@@ -560,6 +750,19 @@ const PatientDashboard: React.FC = () => {
 						</div>
 						<p className="credential-qr-note">Only users logged in with verifier role can verify this QR token. If token is expired, generate a fresh QR from this card and verify immediately.</p>
 						<button type="button" className="btn request" onClick={closeQrModal}>Close</button>
+					</div>
+				</div>
+			) : null}
+
+			{hybridQrPayload ? (
+				<div className="modal-overlay" onClick={() => setHybridQrPayload(null)}>
+					<div className="credential-qr-modal" onClick={(event) => event.stopPropagation()}>
+						<h2>Hybrid Verification QR</h2>
+						<div className="credential-qr-code-wrap">
+							<QRCodeSVG value={hybridQrPayload} size={220} includeMargin />
+						</div>
+						<p className="credential-qr-note">This QR includes contract address, record ID, CID, and hash for on-chain integrity validation.</p>
+						<button type="button" className="btn request" onClick={() => setHybridQrPayload(null)}>Close</button>
 					</div>
 				</div>
 			) : null}

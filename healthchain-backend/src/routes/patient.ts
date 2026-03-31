@@ -164,6 +164,34 @@ export default function patientRoutes() {
     }
   });
 
+  router.post("/profile/me/encryption-key", async (req, res) => {
+    try {
+      const identity = await resolvePatientIdentity(req);
+      const encryptionPublicKey = String(req.body.encryptionPublicKey || "").trim();
+      if (!encryptionPublicKey) {
+        return res.status(400).json({ error: "encryptionPublicKey is required" });
+      }
+
+      const profile = await upsertPatientProfile({
+        did: identity.did,
+        wallet: identity.wallet,
+        encryptionPublicKey,
+      });
+
+      return res.status(201).json({ success: true, profile });
+    } catch (error: any) {
+      const message = error?.message || "Failed to save encryption public key";
+      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+        return res.status(401).json({ error: message });
+      }
+      if (message === "Patient role required") {
+        return res.status(403).json({ error: message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Failed to save encryption public key" });
+    }
+  });
+
   router.get("/credentials/me", async (req, res) => {
     try {
       const identity = await resolvePatientIdentity(req);

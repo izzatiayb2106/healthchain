@@ -2,3 +2,4 @@
 /* tslint:disable */
 /* eslint-disable */
 export { Counter__factory } from './Counter__factory.js';
+export { CredentialRegistry__factory } from './CredentialRegistry__factory.js';

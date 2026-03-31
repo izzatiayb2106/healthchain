@@ -11,6 +11,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@metamask/eth-sig-util": "^8.2.0",
     "@veramo/core": "^7.0.0",
     "@veramo/credential-jwt": "^7.0.0",
     "@veramo/credential-w3c": "^7.0.0",

@@ -1,0 +1,39 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-407cd30eec6884681dcc2ddeba5fe1f438bc86b0",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "userSourceNameMap": {
+    "blockchain/contracts/Counter.sol": "project/blockchain/contracts/Counter.sol",
+    "blockchain/contracts/CredentialRegistry.sol": "project/blockchain/contracts/CredentialRegistry.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/blockchain/contracts/Counter.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.28;\n\ncontract Counter {\n    string public record;\n\n    function setRecord(string memory _record) public {\n        record = _record;\n    }\n\n    function getRecord() public view returns (string memory) {\n        return record;\n    }\n}"
+      },
+      "project/blockchain/contracts/CredentialRegistry.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.28;\n\ncontract CredentialRegistry {\n    struct Record {\n        uint256 recordId;\n        address issuer;\n        address patient;\n        string cid;\n        bytes32 payloadHash;\n        string credentialType;\n        uint256 issuedAt;\n    }\n\n    uint256 private _nextRecordId = 1;\n\n    mapping(uint256 => Record) private _recordsById;\n    mapping(address => uint256[]) private _recordIdsByPatient;\n\n    event RecordIssued(\n        uint256 indexed recordId,\n        address indexed issuer,\n        address indexed patient,\n        string cid,\n        bytes32 payloadHash,\n        string credentialType,\n        uint256 issuedAt\n    );\n\n    function issueRecord(\n        address patient,\n        string calldata cid,\n        bytes32 payloadHash,\n        string calldata credentialType\n    ) external returns (uint256) {\n        require(patient != address(0), \"Invalid patient address\");\n        require(bytes(cid).length > 0, \"CID required\");\n\n        uint256 recordId = _nextRecordId;\n        _nextRecordId += 1;\n\n        Record memory rec = Record({\n            recordId: recordId,\n            issuer: msg.sender,\n            patient: patient,\n            cid: cid,\n            payloadHash: payloadHash,\n            credentialType: credentialType,\n            issuedAt: block.timestamp\n        });\n\n        _recordsById[recordId] = rec;\n        _recordIdsByPatient[patient].push(recordId);\n\n        emit RecordIssued(\n            recordId,\n            msg.sender,\n            patient,\n            cid,\n            payloadHash,\n            credentialType,\n            block.timestamp\n        );\n\n        return recordId;\n    }\n\n    function getPatientRecordCount(address patient) external view returns (uint256) {\n        return _recordIdsByPatient[patient].length;\n    }\n\n    function getPatientRecordAt(address patient, uint256 index)\n        external\n        view\n        returns (\n            uint256 recordId,\n            address issuer,\n            address subject,\n            string memory cid,\n            bytes32 payloadHash,\n            string memory credentialType,\n            uint256 issuedAt\n        )\n    {\n        require(index < _recordIdsByPatient[patient].length, \"Index out of range\");\n        uint256 id = _recordIdsByPatient[patient][index];\n        Record memory rec = _recordsById[id];\n        return (\n            rec.recordId,\n            rec.issuer,\n            rec.patient,\n            rec.cid,\n            rec.payloadHash,\n            rec.credentialType,\n            rec.issuedAt\n        );\n    }\n\n    function getRecordById(uint256 recordId)\n        external\n        view\n        returns (\n            address issuer,\n            address patient,\n            string memory cid,\n            bytes32 payloadHash,\n            string memory credentialType,\n            uint256 issuedAt\n        )\n    {\n        Record memory rec = _recordsById[recordId];\n        require(rec.recordId != 0, \"Record not found\");\n\n        return (\n            rec.issuer,\n            rec.patient,\n            rec.cid,\n            rec.payloadHash,\n            rec.credentialType,\n            rec.issuedAt\n        );\n    }\n\n    function verifyRecord(\n        uint256 recordId,\n        string calldata cid,\n        bytes32 payloadHash\n    ) external view returns (bool) {\n        Record memory rec = _recordsById[recordId];\n        if (rec.recordId == 0) return false;\n        if (keccak256(bytes(rec.cid)) != keccak256(bytes(cid))) return false;\n        if (rec.payloadHash != payloadHash) return false;\n        return true;\n    }\n}\n"
+      }
+    }
+  }
+}

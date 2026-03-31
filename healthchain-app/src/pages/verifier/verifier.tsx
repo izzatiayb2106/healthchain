@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
 import { Html5Qrcode } from 'html5-qrcode';
+import { getCredentialRegistryContract } from '../../blockchain/credentialRegistry';
 import './verifier.css';
 
 type VerifiedCredential = {
@@ -12,6 +13,14 @@ type VerifiedCredential = {
 	credential: any;
 };
 
+type HybridVerifyResult = {
+	valid: boolean;
+	recordId: string;
+	cid: string;
+	payloadHash: string;
+	contractAddress: string;
+};
+
 const VerifierDashboard: React.FC = () => {
 	const readerElementId = 'verifier-qr-reader';
 	const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -20,6 +29,7 @@ const VerifierDashboard: React.FC = () => {
 	const [verifying, setVerifying] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [result, setResult] = useState<VerifiedCredential | null>(null);
+	const [hybridResult, setHybridResult] = useState<HybridVerifyResult | null>(null);
 	const [scanError, setScanError] = useState<string | null>(null);
 	const [isScanning, setIsScanning] = useState(false);
 
@@ -83,6 +93,36 @@ const VerifierDashboard: React.FC = () => {
 			setVerifying(true);
 			setError(null);
 			setResult(null);
+			setHybridResult(null);
+
+			try {
+				const parsed = JSON.parse(value);
+				if (parsed?.type === 'healthchain-hybrid-record') {
+					if (!(window as any).ethereum) {
+						throw new Error('MetaMask is required for on-chain verification.');
+					}
+
+					const provider = new ethers.BrowserProvider((window as any).ethereum);
+					const contract: any = getCredentialRegistryContract(provider).attach(String(parsed.contractAddress || ''));
+					const valid = await contract.verifyRecord(
+						BigInt(String(parsed.recordId || '0')),
+						String(parsed.cid || ''),
+						String(parsed.payloadHash || '')
+					);
+
+					setHybridResult({
+						valid: Boolean(valid),
+						recordId: String(parsed.recordId || ''),
+						cid: String(parsed.cid || ''),
+						payloadHash: String(parsed.payloadHash || ''),
+						contractAddress: String(parsed.contractAddress || ''),
+					});
+					return;
+				}
+			} catch {
+				// Not a hybrid JSON payload, continue with session-token verification.
+			}
+
 			const headers = await buildAuthHeaders();
 			const response = await axios.post(
 				'http://localhost:3001/credential/qr/verify',
@@ -165,6 +205,12 @@ const VerifierDashboard: React.FC = () => {
 	};
 
 	useEffect(() => {
+		const role = String(localStorage.getItem('hc_role') || '').toLowerCase();
+		if (role !== 'verifier') {
+			window.location.href = '/login';
+			return;
+		}
+
 		return () => {
 			void stopScanner();
 		};
@@ -181,7 +227,7 @@ const VerifierDashboard: React.FC = () => {
 
 			<section className="verifier-panel">
 				<h2>Verify Credential QR</h2>
-				<p>Scan using camera or paste QR text. Only verifier-role wallets can verify it.</p>
+				<p>Scan using camera or paste QR text. Supports both session-token QR and hybrid on-chain QR payloads.</p>
 				<div className="scanner-actions">
 					<button className="btn approve" type="button" onClick={() => void startScanner()} disabled={isScanning || verifying}>
 						{isScanning ? 'Scanner Running...' : 'Start Camera Scan'}
@@ -196,7 +242,7 @@ const VerifierDashboard: React.FC = () => {
 					<textarea
 						value={tokenOrPayload}
 						onChange={(event) => setTokenOrPayload(event.target.value)}
-						placeholder='Paste scanned payload e.g. {"type":"healthchain-credential-qr","token":"..."}'
+						placeholder='Paste payload e.g. {"type":"healthchain-credential-qr","token":"..."} or {"type":"healthchain-hybrid-record",...}'
 						disabled={verifying}
 					/>
 					<button className="btn approve" type="submit" disabled={verifying}>
@@ -205,6 +251,24 @@ const VerifierDashboard: React.FC = () => {
 				</form>
 				{error ? <div className="verifier-error">{error}</div> : null}
 			</section>
+
+			{hybridResult ? (
+				<section className="claim-list">
+					<article className={`claim-card ${hybridResult.valid ? 'approved' : ''}`}>
+						<div className="claim-main claim-main-column">
+							<h3 className="patient-name">Hybrid On-Chain Validation</h3>
+							<div><strong>Status:</strong> {hybridResult.valid ? 'Verified Valid' : 'Verification Failed'}</div>
+							<div><strong>Record ID:</strong> {hybridResult.recordId}</div>
+							<div><strong>CID:</strong> {hybridResult.cid}</div>
+							<div><strong>Hash:</strong> {hybridResult.payloadHash}</div>
+							<div><strong>Contract:</strong> {hybridResult.contractAddress}</div>
+						</div>
+						<div className="claim-actions">
+							<span className="badge">{hybridResult.valid ? 'Verified' : 'Failed'}</span>
+						</div>
+					</article>
+				</section>
+			) : null}
 
 			{result ? (
 				<section className="claim-list">

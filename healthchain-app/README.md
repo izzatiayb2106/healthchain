@@ -17,9 +17,9 @@ If you are developing a production application, we recommend updating the config
 
 ```js
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(["dist"]),
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ["**/*.{ts,tsx}"],
     extends: [
       // Other configs...
 
@@ -34,40 +34,67 @@ export default defineConfig([
     ],
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
         tsconfigRootDir: import.meta.dirname,
       },
       // other options...
     },
   },
-])
+]);
 ```
 
 You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
 ```js
 // eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+import reactX from "eslint-plugin-react-x";
+import reactDom from "eslint-plugin-react-dom";
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(["dist"]),
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ["**/*.{ts,tsx}"],
     extends: [
       // Other configs...
       // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
+      reactX.configs["recommended-typescript"],
       // Enable lint rules for React DOM
       reactDom.configs.recommended,
     ],
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
         tsconfigRootDir: import.meta.dirname,
       },
       // other options...
     },
   },
-])
+]);
 ```
+
+## Hybrid Credential Flow (Blockchain + Encrypted Off-Chain Storage)
+
+This project now supports a hybrid credential flow:
+
+- Doctor submits vaccination data.
+- Backend issues VC, encrypts it with patient encryption public key, computes SHA-256 hash.
+- Encrypted payload is stored in local fallback storage mode (CID-like identifier) until IPFS node is configured.
+- Doctor signs on-chain issuance transaction to `CredentialRegistry` with `cid` and `payloadHash`.
+- Patient can load on-chain records, fetch encrypted payload by CID, and decrypt locally with MetaMask (`eth_decrypt`).
+- Verifier can scan hybrid QR and validate record integrity on-chain.
+
+### Deploy contract
+
+From `healthchain-app`:
+
+```bash
+npx hardhat run blockchain/scripts/deploy.ts --network hardhat
+```
+
+Set frontend env:
+
+```bash
+VITE_CREDENTIAL_REGISTRY_ADDRESS=<deployed_contract_address>
+```
+
+Restart frontend after setting the env variable.
