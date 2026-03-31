@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
-import { getCredentialRegistryContract, getCredentialRegistryAddress } from '../../blockchain/credentialRegistry';
+import { assertCredentialRegistryDeployed, getCredentialRegistryContract, getCredentialRegistryAddress } from '../../blockchain/credentialRegistry';
 import './doctor.css';
 
 type DoctorProfile = {
@@ -316,6 +316,7 @@ const DoctorDashboard: React.FC = () => {
             const provider = new ethers.BrowserProvider((window as any).ethereum);
             await provider.send('eth_requestAccounts', []);
             const signer = await provider.getSigner();
+            await assertCredentialRegistryDeployed(provider, getCredentialRegistryAddress());
             const contract = getCredentialRegistryContract(signer);
             const network = await provider.getNetwork();
 
@@ -504,7 +505,7 @@ const DoctorDashboard: React.FC = () => {
     return (
         <div className="doctor-dashboard">
             <header className="dd-header">
-                <h1 className="dd-title">{profile?.displayName ? `Welcome, Dr. ${profile.displayName}` : 'Doctor Dashboard'}</h1>
+                <h1 className="dd-title">{profile?.displayName ? `Welcome, ${profile.displayName}` : 'Doctor Dashboard'}</h1>
                 <button className="btn" onClick={handleLogout}>Logout</button>
             </header>
 
@@ -568,7 +569,7 @@ const DoctorDashboard: React.FC = () => {
             ) : null}
 
             <section className="doctor-info">
-                <strong>Doctor:</strong> {profile?.displayName ? `Dr. ${profile.displayName}` : 'Profile not set'}
+                <strong>Doctor:</strong> {profile?.displayName ? ` ${profile.displayName}` : 'Profile not set'}
                 {profile?.avatarUrl ? (
                     <div className="avatar-preview-wrap">
                         <img src={profile.avatarUrl} alt="Doctor avatar" className="avatar-preview" />

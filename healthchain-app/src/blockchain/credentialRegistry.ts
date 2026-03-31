@@ -23,12 +23,29 @@ export function getCredentialRegistryAddress() {
   return String(import.meta.env.VITE_CREDENTIAL_REGISTRY_ADDRESS || '').trim();
 }
 
-export function getCredentialRegistryContract(providerOrSigner: ethers.Provider | ethers.Signer) {
-  const address = getCredentialRegistryAddress();
+export function getCredentialRegistryContract(providerOrSigner: ethers.Provider | ethers.Signer, addressOverride?: string) {
+  const address = String(addressOverride || getCredentialRegistryAddress()).trim();
   if (!address) {
     throw new Error('VITE_CREDENTIAL_REGISTRY_ADDRESS is not set');
   }
   return new ethers.Contract(address, CREDENTIAL_REGISTRY_ABI, providerOrSigner);
+}
+
+export async function assertCredentialRegistryDeployed(provider: ethers.Provider, addressOverride?: string) {
+  const address = String(addressOverride || getCredentialRegistryAddress()).trim();
+  if (!address) {
+    throw new Error('VITE_CREDENTIAL_REGISTRY_ADDRESS is not set');
+  }
+
+  const [code, network] = await Promise.all([provider.getCode(address), provider.getNetwork()]);
+  if (!code || code === '0x') {
+    throw new Error(
+      `CredentialRegistry is not deployed at ${address} on chainId ${String(network.chainId)}. ` +
+      `Switch MetaMask to the correct network or redeploy and update VITE_CREDENTIAL_REGISTRY_ADDRESS.`
+    );
+  }
+
+  return address;
 }
 
 export function mapChainRecordTuple(tuple: any): HybridChainRecord {

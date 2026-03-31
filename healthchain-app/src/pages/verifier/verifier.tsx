@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
 import { Html5Qrcode } from 'html5-qrcode';
-import { getCredentialRegistryContract } from '../../blockchain/credentialRegistry';
+import { assertCredentialRegistryDeployed, getCredentialRegistryContract } from '../../blockchain/credentialRegistry';
 import './verifier.css';
 
 type VerifiedCredential = {
@@ -103,7 +103,9 @@ const VerifierDashboard: React.FC = () => {
 					}
 
 					const provider = new ethers.BrowserProvider((window as any).ethereum);
-					const contract: any = getCredentialRegistryContract(provider).attach(String(parsed.contractAddress || ''));
+					const hybridContractAddress = String(parsed.contractAddress || '').trim();
+					await assertCredentialRegistryDeployed(provider, hybridContractAddress);
+					const contract: any = getCredentialRegistryContract(provider, hybridContractAddress);
 					const valid = await contract.verifyRecord(
 						BigInt(String(parsed.recordId || '0')),
 						String(parsed.cid || ''),
@@ -131,7 +133,12 @@ const VerifierDashboard: React.FC = () => {
 			);
 			setResult(response.data as VerifiedCredential);
 		} catch (err: any) {
-			const detail = err?.response?.data?.error || err?.message || 'Failed to verify credential QR';
+			const detail =
+				err?.response?.data?.error ||
+				(err?.code === 'BAD_DATA'
+					? 'Unable to read CredentialRegistry. Contract address or selected network is incorrect.'
+					: err?.message) ||
+				'Failed to verify credential QR';
 			setError(detail);
 			if (detail.toLowerCase().includes('token is invalid') || detail.toLowerCase().includes('invalid or expired')) {
 				window.alert('Token invalid or expired. Please generate a new QR from the latest patient credential card.');

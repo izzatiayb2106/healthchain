@@ -62,3 +62,8 @@ export async function hasCredentialType(subjectId: string, credentialType: strin
 		(entry) => entry.subjectId === target && entry.credentialType === credentialType,
 	)
 }
+
+export async function listAllIssuedCredentials() {
+	const store = await readStore()
+	return [...store.credentials]
+}

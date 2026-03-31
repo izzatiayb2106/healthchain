@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
 import { QRCodeSVG } from 'qrcode.react';
-import { getCredentialRegistryAddress, getCredentialRegistryContract, mapChainRecordTuple, type HybridChainRecord } from '../../blockchain/credentialRegistry';
+import { assertCredentialRegistryDeployed, getCredentialRegistryAddress, getCredentialRegistryContract, mapChainRecordTuple, type HybridChainRecord } from '../../blockchain/credentialRegistry';
 import './patient.css';
 
 declare global {
@@ -217,6 +217,7 @@ const PatientDashboard: React.FC = () => {
 			await provider.send('eth_requestAccounts', []);
 			const signer = await provider.getSigner();
 			const wallet = (await signer.getAddress()).toLowerCase();
+			await assertCredentialRegistryDeployed(provider, registryAddress);
 			const contract = getCredentialRegistryContract(provider);
 
 			const count = Number(await contract.getPatientRecordCount(wallet));
@@ -229,7 +230,12 @@ const PatientDashboard: React.FC = () => {
 			records.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
 			setHybridRecords(records);
 		} catch (error: any) {
-			const detail = error?.response?.data?.error || error?.message || 'Failed to load on-chain records';
+			const detail =
+				error?.response?.data?.error ||
+				(error?.code === 'BAD_DATA'
+					? 'Unable to read CredentialRegistry. Contract address or selected network is incorrect.'
+					: error?.message) ||
+				'Failed to load on-chain records';
 			setHybridError(detail);
 		} finally {
 			setHybridLoading(false);
@@ -661,12 +667,18 @@ const PatientDashboard: React.FC = () => {
 
 			<section className="patient-card">
 				<h2>Vaccination Certificates</h2>
-				<p>Click a credential card to generate a verifier-only QR code.</p>
+				<p>Unified history for legacy and blockchain/IPFS credentials. Legacy cards use session QR, on-chain cards use verification QR.</p>
+				<div className="scanner-actions">
+					<button className="btn request" type="button" onClick={() => void loadHybridRecords()} disabled={hybridLoading}>
+						{hybridLoading ? 'Refreshing records...' : 'Refresh On-Chain Records'}
+					</button>
+				</div>
 				{qrError ? <div className="doctor-apply-error">{qrError}</div> : null}
 				{credentialsError ? <div className="doctor-apply-error">{credentialsError}</div> : null}
-				{credentialsLoading ? <p>Loading credentials...</p> : null}
-				{!credentialsLoading && credentials.length === 0 ? (
-					<p>No doctor-issued credentials found yet.</p>
+				{hybridError ? <div className="doctor-apply-error">{hybridError}</div> : null}
+				{credentialsLoading || hybridLoading ? <p>Loading credentials...</p> : null}
+				{!credentialsLoading && !hybridLoading && credentials.length === 0 && hybridRecords.length === 0 ? (
+					<p>No credentials found yet.</p>
 				) : null}
 
 				<div className="credential-list">
@@ -676,6 +688,7 @@ const PatientDashboard: React.FC = () => {
 						return (
 							<article key={`${entry.issuedAt}-${index}`} className="credential-card credential-card-clickable" onClick={() => void openCredentialQr(entry)}>
 								<h3>{entry.credentialType}</h3>
+								<p><strong>Source:</strong> Legacy issuance record</p>
 								<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
 								<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
 								<p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
@@ -685,25 +698,11 @@ const PatientDashboard: React.FC = () => {
 							</article>
 						);
 					})}
-				</div>
-			</section>
 
-			<section className="patient-card">
-				<h2>On-Chain Hybrid Records</h2>
-				<p>Records are validated from blockchain and decrypted locally with your wallet key.</p>
-				<div className="scanner-actions">
-					<button className="btn request" type="button" onClick={() => void loadHybridRecords()} disabled={hybridLoading}>
-						{hybridLoading ? 'Refreshing records...' : 'Refresh On-Chain Records'}
-					</button>
-				</div>
-				{hybridError ? <div className="doctor-apply-error">{hybridError}</div> : null}
-				{hybridLoading ? <p>Loading on-chain records...</p> : null}
-				{!hybridLoading && hybridRecords.length === 0 ? <p>No on-chain records found yet.</p> : null}
-
-				<div className="credential-list">
 					{hybridRecords.map((record) => (
-						<article key={record.recordId} className="credential-card">
+						<article key={`hybrid-${record.recordId}`} className="credential-card">
 							<h3>{record.credentialType}</h3>
+							<p><strong>Source:</strong> Blockchain + IPFS hybrid</p>
 							<p><strong>Record ID:</strong> {record.recordId}</p>
 							<p><strong>CID:</strong> {record.cid}</p>
 							<p><strong>Hash:</strong> {record.payloadHash}</p>

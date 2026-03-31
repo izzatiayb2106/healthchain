@@ -11,7 +11,9 @@ export type HybridCredentialRecord = {
   issuerDid: string
   credentialType: string
   issuedAt: string
-  storageMode: 'local-fallback'
+  source?: 'live-issue' | 'migration-legacy'
+  legacyIssuedAt?: string
+  storageMode: 'local-fallback' | 'pinata'
   txHash?: string
   chainId?: string
   contractAddress?: string
@@ -26,6 +28,8 @@ type HybridCredentialStore = {
 const dataDir = path.join(process.cwd(), 'src', 'data')
 const storePath = path.join(dataDir, 'hybrid-credentials.json')
 
+const PINATA_PIN_JSON_URL = 'https://api.pinata.cloud/pinning/pinJSONToIPFS'
+
 function normalizeWallet(wallet: string) {
   return String(wallet || '').trim().toLowerCase()
 }
@@ -34,6 +38,136 @@ function normalizeHash(hash: string) {
   const h = String(hash || '').trim().toLowerCase()
   if (!h) return ''
   return h.startsWith('0x') ? h : `0x${h}`
+}
+
+function getPinataJwt() {
+  return String(process.env.PINATA_JWT || '').trim()
+}
+
+function getPinataApiKey() {
+  return String(process.env.PINATA_API_KEY || '').trim()
+}
+
+function getPinataApiSecret() {
+  return String(process.env.PINATA_API_SECRET || '').trim()
+}
+
+function getPinataAuthHeaders() {
+  const jwt = getPinataJwt()
+  if (jwt) {
+    return {
+      Authorization: `Bearer ${jwt}`,
+    }
+  }
+
+  const apiKey = getPinataApiKey()
+  const apiSecret = getPinataApiSecret()
+  if (apiKey && apiSecret) {
+    return {
+      pinata_api_key: apiKey,
+      pinata_secret_api_key: apiSecret,
+    }
+  }
+
+  return null
+}
+
+function buildPinataHeaders() {
+  const authHeaders = getPinataAuthHeaders()
+  if (!authHeaders) return null
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  for (const [key, value] of Object.entries(authHeaders)) {
+    if (typeof value === 'string' && value) {
+      headers[key] = value
+    }
+  }
+  return headers
+}
+
+function getPinataGatewayBase() {
+  const customGateway = String(process.env.PINATA_GATEWAY || '').trim()
+  if (customGateway) {
+    const withScheme = /^https?:\/\//i.test(customGateway)
+      ? customGateway
+      : `https://${customGateway}`
+    return withScheme.replace(/\/+$/, '')
+  }
+  return 'https://gateway.pinata.cloud'
+}
+
+function isPinataEnabled() {
+  return Boolean(getPinataAuthHeaders())
+}
+
+async function uploadEncryptedPayloadToPinata(input: {
+  encryptedCredentialHex: string
+  payloadHash: string
+  subjectDid: string
+  subjectWallet: string
+  issuerDid: string
+  credentialType: string
+  issuedAt: string
+}) {
+  const headers = buildPinataHeaders()
+  if (!headers) {
+    throw new Error('Pinata auth is not configured (set PINATA_JWT or PINATA_API_KEY + PINATA_API_SECRET)')
+  }
+
+  const response = await fetch(PINATA_PIN_JSON_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      pinataMetadata: {
+        name: `healthchain-${input.credentialType || 'credential'}-${Date.now()}`,
+      },
+      pinataContent: {
+        type: 'healthchain-encrypted-credential',
+        payloadHash: input.payloadHash,
+        encryptedCredentialHex: input.encryptedCredentialHex,
+        subjectDid: input.subjectDid,
+        subjectWallet: input.subjectWallet,
+        issuerDid: input.issuerDid,
+        credentialType: input.credentialType,
+        issuedAt: input.issuedAt,
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`Pinata upload failed (${response.status}): ${detail || 'unknown error'}`)
+  }
+
+  const data = (await response.json()) as { IpfsHash?: string }
+  const cid = String(data?.IpfsHash || '').trim()
+  if (!cid) {
+    throw new Error('Pinata upload did not return IpfsHash')
+  }
+
+  return cid
+}
+
+async function fetchEncryptedPayloadFromPinata(cid: string) {
+  const gatewayBase = getPinataGatewayBase()
+  const response = await fetch(`${gatewayBase}/ipfs/${encodeURIComponent(cid)}`)
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`Failed to fetch encrypted payload from Pinata gateway (${response.status}): ${detail || 'unknown error'}`)
+  }
+
+  const payload = (await response.json()) as {
+    encryptedCredentialHex?: string
+  }
+
+  const encryptedCredentialHex = String(payload?.encryptedCredentialHex || '').trim()
+  if (!encryptedCredentialHex) {
+    throw new Error('Pinata payload missing encryptedCredentialHex')
+  }
+
+  return encryptedCredentialHex
 }
 
 async function ensureStoreExists() {
@@ -70,6 +204,8 @@ export async function storeHybridEncryptedCredential(input: {
   issuerDid: string
   credentialType: string
   issuedAt: string
+  source?: 'live-issue' | 'migration-legacy'
+  legacyIssuedAt?: string
 }) {
   const encryptedCredentialHex = String(input.encryptedCredentialHex || '').trim()
   if (!encryptedCredentialHex) {
@@ -77,18 +213,38 @@ export async function storeHybridEncryptedCredential(input: {
   }
 
   const payloadHash = sha256Hex(encryptedCredentialHex)
-  const cid = `local-${payloadHash.slice(2, 34)}`
+  let cid = `local-${payloadHash.slice(2, 34)}`
+  let storageMode: HybridCredentialRecord['storageMode'] = 'local-fallback'
+
+  if (isPinataEnabled()) {
+    try {
+      cid = await uploadEncryptedPayloadToPinata({
+        encryptedCredentialHex,
+        payloadHash,
+        subjectDid: String(input.subjectDid || '').trim(),
+        subjectWallet: normalizeWallet(input.subjectWallet),
+        issuerDid: String(input.issuerDid || '').trim(),
+        credentialType: String(input.credentialType || '').trim() || 'VaccinationCredential',
+        issuedAt: String(input.issuedAt || '').trim() || new Date().toISOString(),
+      })
+      storageMode = 'pinata'
+    } catch (error) {
+      console.error('Pinata upload failed. Falling back to local storage mode.', error)
+    }
+  }
 
   const record: HybridCredentialRecord = {
     cid,
     payloadHash,
-    encryptedCredentialHex,
+    encryptedCredentialHex: storageMode === 'pinata' ? '' : encryptedCredentialHex,
     subjectDid: String(input.subjectDid || '').trim(),
     subjectWallet: normalizeWallet(input.subjectWallet),
     issuerDid: String(input.issuerDid || '').trim(),
     credentialType: String(input.credentialType || '').trim() || 'VaccinationCredential',
     issuedAt: String(input.issuedAt || '').trim() || new Date().toISOString(),
-    storageMode: 'local-fallback',
+    source: input.source || 'live-issue',
+    legacyIssuedAt: String(input.legacyIssuedAt || '').trim() || undefined,
+    storageMode,
   }
 
   const store = await readStore()
@@ -139,7 +295,18 @@ export async function getHybridCredentialByCid(cid: string) {
   const target = String(cid || '').trim()
   if (!target) return null
   const store = await readStore()
-  return store.records.find((entry) => entry.cid === target) || null
+  const found = store.records.find((entry) => entry.cid === target) || null
+  if (!found) return null
+
+  if (found.storageMode === 'pinata' && !String(found.encryptedCredentialHex || '').trim()) {
+    const encryptedCredentialHex = await fetchEncryptedPayloadFromPinata(found.cid)
+    return {
+      ...found,
+      encryptedCredentialHex,
+    }
+  }
+
+  return found
 }
 
 export async function listHybridCredentialsBySubjectWallet(subjectWallet: string) {
@@ -147,6 +314,23 @@ export async function listHybridCredentialsBySubjectWallet(subjectWallet: string
   if (!target) return []
   const store = await readStore()
   return store.records.filter((entry) => entry.subjectWallet === target)
+}
+
+export async function findHybridByLegacyReference(subjectDid: string, legacyIssuedAt: string, credentialType: string) {
+  const targetSubject = String(subjectDid || '').trim()
+  const targetIssuedAt = String(legacyIssuedAt || '').trim()
+  const targetCredentialType = String(credentialType || '').trim()
+  if (!targetSubject || !targetIssuedAt || !targetCredentialType) return null
+
+  const store = await readStore()
+  return (
+    store.records.find(
+      (entry) =>
+        entry.subjectDid === targetSubject &&
+        String(entry.legacyIssuedAt || '').trim() === targetIssuedAt &&
+        String(entry.credentialType || '').trim() === targetCredentialType,
+    ) || null
+  )
 }
 
 export function payloadHashMatches(payloadHash: string, encryptedCredentialHex: string) {
