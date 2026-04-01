@@ -2,7 +2,6 @@ import express from "express";
 import { ethers } from "ethers";
 import { ensureDidForWallet } from "../services/didService";
 import { getCaDid, getIdentityByDid, getIdentityByWallet, getSystemAdminWallet, setRole, upsertIdentity } from "../services/authServices";
-import { hasCredentialType, saveIssuedCredential } from "../services/credentialServices";
 import { upsertDoctorProfile } from "../services/doctorProfileService";
 import {
   canLicenseBeIssuedToWallet,
@@ -10,6 +9,8 @@ import {
   listMinistryLicenseRecords,
   resolveProfessionalAccessRole,
 } from "../services/ministryRegistryService";
+import { registerSseConnection } from "../services/eventService";
+import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 
 const KNOWN_ROLES = new Set(["patient", "doctor", "verifier", "admin"]);
 
@@ -23,19 +24,8 @@ function normalizeRole(role: unknown): "patient" | "doctor" | "verifier" | "admi
 
 async function resolveRoleByCredential(did: string, currentRole: string) {
   const normalizedCurrent = normalizeRole(currentRole);
-
-  if (normalizedCurrent === "admin" || normalizedCurrent === "verifier") {
-    return normalizedCurrent;
-  }
-
-  if (
-    await hasCredentialType(did, "DoctorCredential") ||
-    await hasCredentialType(did, "MedicalLicenseCredential")
-  ) {
-    return "doctor";
-  }
-
-  return normalizedCurrent === "doctor" ? "doctor" : "patient";
+  // issued-credentials store is retired; role is now resolved from identity mapping/registry updates.
+  return normalizedCurrent;
 }
 
 export default function authRoutes(agent: any) {
@@ -73,28 +63,7 @@ export default function authRoutes(agent: any) {
         mapped = await setRole(mapped.wallet, resolvedRole)
       }
 
-      let patientCredentialIssued = false
-      const caDid = await getCaDid()
-      if (caDid) {
-        const hasPatientCredential = await hasCredentialType(mapped.did, 'PatientCredential')
-        if (!hasPatientCredential) {
-          const credential = await agent.createVerifiableCredential({
-            credential: {
-              issuer: { id: caDid },
-              credentialSubject: {
-                id: mapped.did,
-                wallet: mapped.wallet,
-                role: 'patient',
-                verificationStatus: 'pending',
-              },
-              type: ['VerifiableCredential', 'PatientCredential'],
-            },
-            proofFormat: 'jwt',
-          })
-          await saveIssuedCredential(mapped.did, 'PatientCredential', credential)
-          patientCredentialIssued = true
-        }
-      }
+      const patientCredentialIssued = false
 
       res.json({
         success: true,
@@ -110,6 +79,66 @@ export default function authRoutes(agent: any) {
     }
   });
 
+  // JWT-based login endpoint: Sign once, get token for all future requests
+  router.post("/login-jwt", async (req, res) => {
+    try {
+      const { address, signature, message } = req.body;
+
+      if (!address || !signature || !message) {
+        return res.status(400).json({ error: "address, signature, and message are required" });
+      }
+
+      // Verify signature
+      const recovered = ethers.verifyMessage(message, signature);
+      if (recovered.toLowerCase() !== String(address || "").toLowerCase()) {
+        return res.status(401).json({ error: "Invalid signature" });
+      }
+
+      // Get or create identity
+      const ensured = await ensureDidForWallet(agent, address);
+      const did = String(ensured.identifier?.did || "");
+
+      const existing = await getIdentityByWallet(address);
+      let mapped = await upsertIdentity(address, did, normalizeRole(existing?.role));
+
+      // Set admin if system admin wallet
+      const systemAdminWallet = await getSystemAdminWallet();
+      if (systemAdminWallet && mapped.wallet === systemAdminWallet && mapped.role !== "admin") {
+        mapped = await setRole(mapped.wallet, "admin");
+      }
+
+      // Resolve role by credentials
+      const resolvedRole = await resolveRoleByCredential(mapped.did, mapped.role);
+      if (mapped.role !== resolvedRole) {
+        mapped = await setRole(mapped.wallet, resolvedRole);
+      }
+
+      const patientCredentialIssued = false;
+
+      // Generate JWT token
+      const { generateToken } = await import("../services/jwtService");
+      const normalizedRole = normalizeRole(mapped.role);
+      const token = generateToken({
+        wallet: mapped.wallet,
+        did: mapped.did,
+        role: normalizedRole,
+      });
+
+      res.json({
+        success: true,
+        token,
+        address: mapped.wallet,
+        did: mapped.did,
+        role: mapped.role,
+        expiresIn: "7d",
+        didCreated: ensured.created,
+        patientCredentialIssued,
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Authentication failed" });
+    }
+  });
 
   // Whitelist-only professional access for demo: professionalId + requestedRole
   router.post("/professional/access", async (req, res) => {
@@ -168,27 +197,6 @@ export default function authRoutes(agent: any) {
       }
 
       const vcType = allowedRole === "doctor" ? "MedicalLicenseCredential" : "VerifierCredential";
-      const credential = await agent.createVerifiableCredential({
-        credential: {
-          issuer: { id: ministryDid },
-          credentialSubject: {
-            id: identity.did,
-            wallet: identity.wallet,
-            name: licenseRecord.fullName,
-            role: allowedRole,
-            professionalId: licenseRecord.professionalId,
-            licenseType: licenseRecord.licenseType,
-            specialty: licenseRecord.specialty,
-            licenseStatus: licenseRecord.status,
-            validUntil: licenseRecord.validUntil,
-            issuedBy: "Demo Ministry of Health",
-          },
-          type: ["VerifiableCredential", vcType],
-        },
-        proofFormat: "jwt",
-      });
-
-      await saveIssuedCredential(identity.did, vcType, credential);
       const updated = await setRole(identity.wallet, allowedRole);
 
       if (allowedRole === "doctor") {
@@ -227,6 +235,40 @@ export default function authRoutes(agent: any) {
     } catch (err: any) {
       console.error(err);
       return res.status(500).json({ error: "Failed to load Ministry registry" });
+    }
+  });
+
+  // SSE endpoint for real-time credential updates
+  // Requires JWT authentication (supports Authorization header or ?token=)
+  router.get("/events", jwtAuthMiddleware, (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.wallet) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      // Set SSE headers
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+
+      console.log(`[SSE] New client connection for wallet ${user.wallet}`);
+
+      // Register this connection
+      const cleanup = registerSseConnection(user.wallet, res);
+
+      // Send initial connection confirmation
+      res.write(`event: connected\n`);
+      res.write(`data: ${JSON.stringify({ wallet: user.wallet, connectedAt: new Date().toISOString() })}\n\n`);
+
+      // Handle client disconnect
+      req.on("close", () => {
+        cleanup();
+      });
+    } catch (error: any) {
+      console.error("[SSE] Connection error:", error);
+      res.status(500).json({ error: "SSE connection failed" });
     }
   });
 

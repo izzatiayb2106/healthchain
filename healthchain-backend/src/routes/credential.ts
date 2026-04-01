@@ -2,36 +2,25 @@ import express from "express";
 import { ethers } from "ethers";
 import { encrypt } from "@metamask/eth-sig-util";
 import { getIdentityByDid, getIdentityByWallet, upsertIdentity } from "../services/authServices";
-import { listIssuedCredentialsBySubject, saveIssuedCredential } from "../services/credentialServices";
 import { ensureDidForWallet } from "../services/didService";
 import { createCredentialQrSession, getCredentialQrSession } from "../services/credentialQrService";
 import { getPatientProfileByDid } from "../services/patientProfileService";
+import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 import {
   finalizeHybridCredential,
   getHybridCredentialByCid,
+  listHybridCredentialsBySubjectDid,
   payloadHashMatches,
   storeHybridEncryptedCredential,
 } from "../services/hybridCredentialService";
+import { emitEventToWallet } from "../services/eventService";
 
-function getWalletAuth(req: express.Request) {
-  const wallet = String(req.header("x-user-wallet") || "").trim().toLowerCase();
-  const signature = String(req.header("x-user-signature") || "").trim();
-  const message = String(req.header("x-user-message") || "").trim();
-  return { wallet, signature, message };
-}
-
-async function resolveIdentityBySignedWallet(req: express.Request) {
-  const { wallet, signature, message } = getWalletAuth(req);
-  if (!wallet || !signature || !message) {
-    throw new Error("Missing user authentication headers");
+async function resolveIdentityByJWT(req: express.Request) {
+  if (!req.user) {
+    throw new Error("Not authenticated. Use JWT token in Authorization header.");
   }
 
-  const recovered = ethers.verifyMessage(message, signature).toLowerCase();
-  if (recovered !== wallet) {
-    throw new Error("Invalid user signature");
-  }
-
-  const identity = await getIdentityByWallet(wallet);
+  const identity = await getIdentityByWallet(req.user.wallet);
   if (!identity) {
     throw new Error("Identity not found for wallet");
   }
@@ -41,6 +30,9 @@ async function resolveIdentityBySignedWallet(req: express.Request) {
 
 export default function credentialRoutes(agent: any) {
   const router = express.Router();
+
+  // Apply JWT authentication to all credential routes
+  router.use(jwtAuthMiddleware);
 
   const encryptForPatient = (publicKey: string, payload: string) => {
     const encrypted = encrypt({
@@ -67,87 +59,23 @@ export default function credentialRoutes(agent: any) {
     return raw;
   };
 
-  router.post("/issue", async (req, res) => {
-    try {
-      const doctorIdentity = await resolveIdentityBySignedWallet(req);
-      if (doctorIdentity.role !== "doctor") {
-        return res.status(403).json({ error: "Doctor role required to issue credentials" });
-      }
-
-      const subjectInput = String(req.body.subjectDid || req.body.subject || "").trim();
-      if (!subjectInput) {
-        return res.status(400).json({ error: "subjectDid is required" });
-      }
-
-      // Backward compatibility: older pending records store wallet in patientDid.
-      let patientIdentity = await getIdentityByDid(subjectInput);
-      if (!patientIdentity && subjectInput.startsWith("0x")) {
-        patientIdentity = await getIdentityByWallet(subjectInput.toLowerCase());
-      }
-      if (!patientIdentity || patientIdentity.role !== "patient") {
-        return res.status(400).json({ error: "subjectDid must belong to an existing patient" });
-      }
-
-      const subjectWallet = String(req.body.subjectWallet || "").trim().toLowerCase();
-      if (subjectWallet && subjectWallet !== patientIdentity.wallet) {
-        return res.status(400).json({ error: "subjectWallet does not match subjectDid mapping" });
-      }
-
-      // Ensure issuer DID exists in Veramo key store to avoid stale DID mapping failures.
-      const ensuredIssuer = await ensureDidForWallet(agent, doctorIdentity.wallet);
-      const issuerDid = String(ensuredIssuer.identifier?.did || doctorIdentity.did || "").trim();
-      if (!issuerDid) {
-        return res.status(500).json({ error: "Unable to resolve issuer DID for doctor wallet" });
-      }
-      if (issuerDid !== doctorIdentity.did) {
-        await upsertIdentity(doctorIdentity.wallet, issuerDid, doctorIdentity.role);
-      }
-
-      const credential = await agent.createVerifiableCredential({
-        credential: {
-          issuer: { id: issuerDid },
-          credentialSubject: {
-            id: patientIdentity.did,
-            wallet: patientIdentity.wallet,
-            name: req.body.name,
-            role: req.body.role || "patient",
-            ...(req.body.credentialDetails && typeof req.body.credentialDetails === "object"
-              ? req.body.credentialDetails
-              : {}),
-          },
-          type: ['VerifiableCredential', req.body.credentialType || 'RoleCredential'],
-        },
-        proofFormat: "jwt"
-      });
-
-      await saveIssuedCredential(patientIdentity.did, String(req.body.credentialType || 'RoleCredential'), credential);
-
-      res.json({
-        success: true,
-        issuedBy: issuerDid,
-        issuedTo: patientIdentity.did,
-        credentialType: String(req.body.credentialType || 'RoleCredential'),
-        credential,
-      });
-    } catch (error) {
-      console.error(error);
-      const message = (error as any)?.message || "Credential issuance failed";
-      if (
-        message === "Missing user authentication headers" ||
-        message === "Invalid user signature"
-      ) {
-        return res.status(401).json({ error: message });
-      }
-      if (message === "Identity not found for wallet") {
-        return res.status(404).json({ error: message });
-      }
-      res.status(500).json({ error: "Credential issuance failed", details: message });
-    }
+  router.post("/issue", async (_req, res) => {
+    return res.status(410).json({
+      error: "Legacy issuance endpoint removed",
+      hint: "Use /credential/hybrid/prepare and /credential/hybrid/finalize",
+    });
   });
 
   router.post("/hybrid/prepare", async (req, res) => {
     try {
-      const doctorIdentity = await resolveIdentityBySignedWallet(req);
+      const doctorIdentity = await resolveIdentityByJWT(req);
+      const debugId = `hybrid-${Date.now()}`;
+      console.log(`[HYBRID][${debugId}] Prepare request`, {
+        doctorWallet: doctorIdentity.wallet,
+        subjectDid: req.body.subjectDid,
+        subjectWallet: req.body.subjectWallet,
+        credentialType: req.body.credentialType,
+      });
       if (doctorIdentity.role !== "doctor") {
         return res.status(403).json({ error: "Doctor role required to issue credentials" });
       }
@@ -221,7 +149,20 @@ export default function credentialRoutes(agent: any) {
         issuedAt,
       });
 
-      await saveIssuedCredential(patientIdentity.did, credentialType, credential);
+      // Emit real-time event to patient and doctor for hybrid credential
+      const eventData = {
+        type: 'credential-issued',
+        mode: 'hybrid',
+        credentialType: credentialType,
+        issuedAt: issuedAt,
+        issuerName: req.body.name,
+        issuerDid: issuerDid,
+        patientDid: patientIdentity.did,
+        patientWallet: patientIdentity.wallet,
+        cid: stored.cid,
+      };
+      emitEventToWallet(patientIdentity.wallet, 'credential-issued', eventData);
+      emitEventToWallet(doctorIdentity.wallet, 'credential-issued', eventData);
 
       return res.status(201).json({
         success: true,
@@ -250,7 +191,16 @@ export default function credentialRoutes(agent: any) {
 
   router.post("/hybrid/finalize", async (req, res) => {
     try {
-      const doctorIdentity = await resolveIdentityBySignedWallet(req);
+      const doctorIdentity = await resolveIdentityByJWT(req);
+      const debugId = `hybrid-finalize-${Date.now()}`;
+      console.log(`[HYBRID][${debugId}] Finalize request`, {
+        doctorWallet: doctorIdentity.wallet,
+        cid: req.body.cid,
+        txHash: req.body.txHash,
+        recordId: req.body.recordId,
+        chainId: req.body.chainId,
+        contractAddress: req.body.contractAddress,
+      });
       if (doctorIdentity.role !== "doctor") {
         return res.status(403).json({ error: "Doctor role required to finalize issuance" });
       }
@@ -272,6 +222,26 @@ export default function credentialRoutes(agent: any) {
         contractAddress,
         recordId,
       });
+      console.log(`[HYBRID][${debugId}] Finalize success`, {
+        cid: finalized.cid,
+        recordId: finalized.recordId,
+        txHash: finalized.txHash,
+        contractAddress: finalized.contractAddress,
+      });
+
+      // Emit event to patient for blockchain confirmation
+      const eventData = {
+        type: 'credential-finalized',
+        mode: 'hybrid',
+        credentialType: finalized.credentialType,
+        issuedAt: finalized.issuedAt,
+        issuerDid: finalized.issuerDid,
+        txHash: txHash,
+        recordId: recordId,
+        chainId: chainId,
+      };
+      emitEventToWallet(finalized.subjectWallet, 'credential-finalized', eventData);
+      emitEventToWallet(finalized.issuerDid, 'credential-finalized', eventData);
 
       return res.json({ success: true, record: finalized });
     } catch (error) {
@@ -292,19 +262,37 @@ export default function credentialRoutes(agent: any) {
 
   router.get("/hybrid/cid/:cid", async (req, res) => {
     try {
-      const identity = await resolveIdentityBySignedWallet(req);
+      const identity = await resolveIdentityByJWT(req);
+      if (identity.role !== "patient") {
+        return res.status(403).json({ error: "Patient role required for encrypted payload access" });
+      }
       const cid = String(req.params.cid || "").trim();
       if (!cid) {
         return res.status(400).json({ error: "cid is required" });
       }
 
+      console.log(`[HYBRID_CID] Fetching credential, CID: ${cid}, patient wallet: ${identity.wallet}`);
+      
       const found = await getHybridCredentialByCid(cid);
       if (!found) {
+        console.error(`[HYBRID_CID] Credential not found, CID: ${cid}`);
         return res.status(404).json({ error: "Encrypted payload not found for cid" });
       }
 
-      if (identity.role === "patient" && found.subjectDid !== identity.did) {
+      if (found.subjectDid !== identity.did) {
+        console.error(`[HYBRID_CID] Access denied - DID mismatch`);
         return res.status(403).json({ error: "Patient can only access own encrypted credential" });
+      }
+
+      const hasEncryptedHex = !!found.encryptedCredentialHex;
+      console.log(`[HYBRID_CID] Found credential, hasEncryptedHex: ${hasEncryptedHex}, hexLength: ${found.encryptedCredentialHex?.length || 0}`);
+
+      if (!hasEncryptedHex) {
+        console.error(`[HYBRID_CID] ERROR: Encrypted credential hex is empty after retrieval!`);
+        return res.status(500).json({ 
+          error: "Failed to retrieve encrypted credential from storage",
+          hint: "The credential data may not have been properly encrypted or stored. Contact support."
+        });
       }
 
       return res.json({
@@ -318,7 +306,7 @@ export default function credentialRoutes(agent: any) {
         recordId: found.recordId || null,
       });
     } catch (error) {
-      console.error(error);
+      console.error('[HYBRID_CID] Error:', error);
       const message = (error as any)?.message || "Failed to fetch encrypted payload";
       if (message === "Missing user authentication headers" || message === "Invalid user signature") {
         return res.status(401).json({ error: message });
@@ -332,6 +320,11 @@ export default function credentialRoutes(agent: any) {
 
   router.post("/hybrid/validate-payload", async (req, res) => {
     try {
+      const identity = await resolveIdentityByJWT(req);
+      if (identity.role !== "patient") {
+        return res.status(403).json({ error: "Patient role required for payload validation" });
+      }
+
       const payloadHash = String(req.body.payloadHash || "").trim();
       const encryptedCredentialHex = String(req.body.encryptedCredentialHex || "").trim();
       if (!payloadHash || !encryptedCredentialHex) {
@@ -349,7 +342,7 @@ export default function credentialRoutes(agent: any) {
 
   router.get("/received/:subjectId", async (req, res) => {
     try {
-      const patientIdentity = await resolveIdentityBySignedWallet(req);
+      const patientIdentity = await resolveIdentityByJWT(req);
       if (patientIdentity.role !== "patient") {
         return res.status(403).json({ error: "Patient access only" });
       }
@@ -359,12 +352,17 @@ export default function credentialRoutes(agent: any) {
         return res.status(403).json({ error: "You can only read credentials issued to your own DID" });
       }
 
-      const received = (await listIssuedCredentialsBySubject(subjectId))
-        .map((entry) => ({
-          issuedAt: entry.issuedAt,
-          credential: entry.credential,
-          credentialType: entry.credentialType,
-        }));
+      const received = (await listHybridCredentialsBySubjectDid(patientIdentity.did)).map((entry) => ({
+        issuedAt: entry.issuedAt,
+        credentialType: entry.credentialType,
+        mode: "hybrid",
+        cid: entry.cid,
+        payloadHash: entry.payloadHash,
+        recordId: entry.recordId || null,
+        txHash: entry.txHash || null,
+        chainId: entry.chainId || null,
+        contractAddress: entry.contractAddress || null,
+      }));
 
       res.json({
         subjectId: req.params.subjectId,
@@ -374,12 +372,6 @@ export default function credentialRoutes(agent: any) {
     } catch (error) {
       console.error(error);
       const message = (error as any)?.message || "Failed to load received credentials";
-      if (
-        message === "Missing user authentication headers" ||
-        message === "Invalid user signature"
-      ) {
-        return res.status(401).json({ error: message });
-      }
       if (message === "Identity not found for wallet") {
         return res.status(404).json({ error: message });
       }
@@ -389,33 +381,46 @@ export default function credentialRoutes(agent: any) {
 
   router.post("/qr/create", async (req, res) => {
     try {
-      const identity = await resolveIdentityBySignedWallet(req);
+      const identity = await resolveIdentityByJWT(req);
       if (identity.role !== "patient") {
         return res.status(403).json({ error: "Patient role required" });
       }
 
+      const requestedRecordId = String(req.body.recordId || "").trim();
       const issuedAt = String(req.body.issuedAt || "").trim();
       const credentialType = String(req.body.credentialType || "").trim();
-      if (!issuedAt) {
-        return res.status(400).json({ error: "issuedAt is required" });
+      if (!requestedRecordId && !issuedAt) {
+        return res.status(400).json({ error: "recordId or issuedAt is required" });
       }
 
-      const issued = await listIssuedCredentialsBySubject(identity.did);
-      const target = issued.find(
+      const records = await listHybridCredentialsBySubjectDid(identity.did);
+      const target = records.find(
         (entry) =>
-          String(entry.issuedAt || "").trim() === issuedAt &&
+          (!requestedRecordId || String(entry.recordId || "").trim() === requestedRecordId) &&
+          (!issuedAt || String(entry.issuedAt || "").trim() === issuedAt) &&
           (!credentialType || String(entry.credentialType || "").trim() === credentialType)
       );
 
       if (!target) {
-        return res.status(404).json({ error: "Credential not found for patient" });
+        return res.status(404).json({ error: "Hybrid credential not found for patient" });
+      }
+
+      if (!target.recordId || !target.contractAddress) {
+        return res.status(409).json({
+          error: "Credential has not been finalized on-chain yet",
+          hint: "Wait for doctor finalize step before generating verifier QR",
+        });
       }
 
       const session = await createCredentialQrSession({
         subjectDid: identity.did,
         issuedAt: target.issuedAt,
         credentialType: target.credentialType,
-        credential: target.credential,
+        cid: target.cid,
+        payloadHash: target.payloadHash,
+        recordId: String(target.recordId),
+        contractAddress: String(target.contractAddress),
+        chainId: String(target.chainId || "") || undefined,
         createdByWallet: identity.wallet,
         ttlSeconds: 600,
       });
@@ -427,6 +432,7 @@ export default function credentialRoutes(agent: any) {
 
       return res.status(201).json({
         success: true,
+        mode: "hybrid",
         qrPayload,
         serverNowUtc: new Date().toISOString(),
         serverNowEpochMs: Date.now(),
@@ -450,7 +456,7 @@ export default function credentialRoutes(agent: any) {
 
   const verifyQrHandler: express.RequestHandler = async (req, res) => {
     try {
-      const identity = await resolveIdentityBySignedWallet(req);
+      const identity = await resolveIdentityByJWT(req);
       if (identity.role !== "verifier") {
         return res.status(403).json({ error: "Verifier role required" });
       }
@@ -470,28 +476,42 @@ export default function credentialRoutes(agent: any) {
         });
       }
 
-      const credentialForVerification =
-        typeof session.credential === "string"
-          ? session.credential
-          : String(session.credential?.proof?.jwt || "").trim() || session.credential;
+      if (!session.recordId || !session.cid || !session.payloadHash || !session.contractAddress) {
+        return res.status(409).json({ error: "QR session does not contain hybrid verification metadata" });
+      }
 
-      const verification = await agent.verifyCredential({
-        credential: credentialForVerification,
-      });
+      const rpcUrl = String(process.env.RPC_URL || "http://127.0.0.1:8545").trim();
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const contract = new ethers.Contract(
+        session.contractAddress,
+        ["function verifyRecord(uint256 recordId, string cid, bytes32 payloadHash) view returns (bool)"],
+        provider
+      );
 
-      if (verification?.verified === false) {
-        return res.status(400).json({ error: "Credential signature verification failed" });
+      const onChainValid = await contract.verifyRecord(
+        BigInt(session.recordId),
+        session.cid,
+        session.payloadHash
+      );
+
+      if (!Boolean(onChainValid)) {
+        return res.status(400).json({ error: "On-chain record verification failed" });
       }
 
       return res.json({
         success: true,
+        mode: "hybrid",
         verifiedBy: identity.did,
-        credentialVerified: true,
+        credentialVerified: Boolean(onChainValid),
         verifiedAtUtc: new Date().toISOString(),
         subjectDid: session.subjectDid,
         issuedAt: session.issuedAt,
         credentialType: session.credentialType,
-        credential: session.credential,
+        recordId: session.recordId,
+        cid: session.cid,
+        payloadHash: session.payloadHash,
+        contractAddress: session.contractAddress,
+        chainId: session.chainId || null,
       });
     } catch (error) {
       console.error(error);

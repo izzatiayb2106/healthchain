@@ -3,42 +3,13 @@ import { ethers } from "ethers";
 import { getIdentityByDid, getIdentityByWallet } from "../services/authServices";
 import { getDoctorProfileByDid, upsertDoctorProfile } from "../services/doctorProfileService";
 import { getPatientProfileByDid, getPatientProfileByWallet } from "../services/patientProfileService";
-import { listIssuedCredentialsBySubject } from "../services/credentialServices";
+import { listHybridCredentialsBySubjectDid } from "../services/hybridCredentialService";
+import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 import {
   getPendingPatientsByDoctorDid,
   addPendingPatient,
   removePendingPatient,
 } from "../services/doctorPendingPatientsService";
-
-function parseJwtPayload(tokenLike: string): any {
-  const token = String(tokenLike || "").trim();
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
-    return JSON.parse(payload);
-  } catch {
-    return null;
-  }
-}
-
-function extractIssuerDid(credential: any): string {
-  if (!credential) return "";
-
-  if (typeof credential === "string") {
-    const jwtPayload = parseJwtPayload(credential);
-    const vc = jwtPayload?.vc || {};
-    const issuer = vc?.issuer || jwtPayload?.iss || "";
-    return typeof issuer === "string" ? issuer : String(issuer?.id || "");
-  }
-
-  if (typeof credential === "object") {
-    const issuer = credential?.issuer || credential?.vc?.issuer || credential?.proof?.issuer || "";
-    return typeof issuer === "string" ? issuer : String(issuer?.id || "");
-  }
-
-  return "";
-}
 
 function isValidAvatarUrl(value: string) {
   if (!value) return true;
@@ -50,25 +21,13 @@ function isValidAvatarUrl(value: string) {
   }
 }
 
-function getWalletAuth(req: express.Request) {
-  const wallet = String(req.header("x-user-wallet") || "").trim().toLowerCase();
-  const signature = String(req.header("x-user-signature") || "").trim();
-  const message = String(req.header("x-user-message") || "").trim();
-  return { wallet, signature, message };
-}
-
-async function resolveDoctorIdentity(req: express.Request) {
-  const { wallet, signature, message } = getWalletAuth(req);
-  if (!wallet || !signature || !message) {
-    throw new Error("Missing user authentication headers");
+async function resolveDoctorIdentityByJWT(req: express.Request) {
+  const jwtUser = (req as any).user;
+  if (!jwtUser || !jwtUser.wallet) {
+    throw new Error("Not authenticated or missing wallet in JWT");
   }
 
-  const recovered = ethers.verifyMessage(message, signature).toLowerCase();
-  if (recovered !== wallet) {
-    throw new Error("Invalid user signature");
-  }
-
-  const identity = await getIdentityByWallet(wallet);
+  const identity = await getIdentityByWallet(jwtUser.wallet);
   if (!identity || identity.role !== "doctor") {
     throw new Error("Doctor role required");
   }
@@ -78,10 +37,11 @@ async function resolveDoctorIdentity(req: express.Request) {
 
 export default function doctorRoutes() {
   const router = express.Router();
+  router.use(jwtAuthMiddleware);
 
   router.get("/profile/me", async (req, res) => {
     try {
-      const identity = await resolveDoctorIdentity(req);
+      const identity = await resolveDoctorIdentityByJWT(req);
       const profile = await getDoctorProfileByDid(identity.did);
       if (!profile) {
         return res.status(404).json({
@@ -108,7 +68,7 @@ export default function doctorRoutes() {
 
   router.post("/profile/me", async (req, res) => {
     try {
-      const identity = await resolveDoctorIdentity(req);
+      const identity = await resolveDoctorIdentityByJWT(req);
       const displayName = String(req.body.displayName || "").trim();
       const specialty = String(req.body.specialty || "").trim();
       const hospitalOrClinic = String(req.body.hospitalOrClinic || "").trim();
@@ -151,7 +111,7 @@ export default function doctorRoutes() {
 
   router.put("/profile/me", async (req, res) => {
     try {
-      const identity = await resolveDoctorIdentity(req);
+      const identity = await resolveDoctorIdentityByJWT(req);
       const current = await getDoctorProfileByDid(identity.did);
       if (!current) {
         return res.status(404).json({ error: "Doctor profile not found. Complete onboarding first." });
@@ -208,7 +168,7 @@ export default function doctorRoutes() {
 
   router.post("/pending-patients", async (req, res) => {
     try {
-      const identity = await resolveDoctorIdentity(req);
+      const identity = await resolveDoctorIdentityByJWT(req);
       const patientWallet = String(req.body.patientWallet || "").trim().toLowerCase();
       const patientDidInput = String(req.body.patientDid || "").trim();
 
@@ -243,7 +203,7 @@ export default function doctorRoutes() {
 
   router.get("/pending-patients", async (req, res) => {
     try {
-      const identity = await resolveDoctorIdentity(req);
+      const identity = await resolveDoctorIdentityByJWT(req);
       const pendingPatients = getPendingPatientsByDoctorDid(identity.did);
       return res.json({ success: true, pendingPatients: pendingPatients?.patients || [] });
     } catch (error: any) {
@@ -261,7 +221,7 @@ export default function doctorRoutes() {
 
   router.get("/pending-patients/me", async (req, res) => {
     try {
-      const identity = await resolveDoctorIdentity(req);
+      const identity = await resolveDoctorIdentityByJWT(req);
       const pendingPatients = getPendingPatientsByDoctorDid(identity.did);
       return res.json({ success: true, pendingPatients: pendingPatients?.patients || [] });
     } catch (error: any) {
@@ -279,7 +239,7 @@ export default function doctorRoutes() {
 
   router.delete("/pending-patients/:patientWallet", async (req, res) => {
     try {
-      const identity = await resolveDoctorIdentity(req);
+      const identity = await resolveDoctorIdentityByJWT(req);
       const patientWallet = String(req.params.patientWallet || "").trim().toLowerCase();
 
       if (!patientWallet) {
@@ -303,7 +263,7 @@ export default function doctorRoutes() {
 
   router.get("/patient-profile/:patientDid", async (req, res) => {
     try {
-      await resolveDoctorIdentity(req);
+      await resolveDoctorIdentityByJWT(req);
       const patientDid = String(req.params.patientDid || "").trim();
       if (!patientDid) {
         return res.status(400).json({ error: "patientDid is required" });
@@ -334,7 +294,7 @@ export default function doctorRoutes() {
 
   router.get("/patient-credentials/:patientDid", async (req, res) => {
     try {
-      const doctorIdentity = await resolveDoctorIdentity(req);
+      const doctorIdentity = await resolveDoctorIdentityByJWT(req);
       const patientDidParam = String(req.params.patientDid || "").trim();
       if (!patientDidParam) {
         return res.status(400).json({ error: "patientDid is required" });
@@ -348,25 +308,34 @@ export default function doctorRoutes() {
         return res.status(404).json({ error: "Patient identity not found" });
       }
 
-      const issued = await listIssuedCredentialsBySubject(patientIdentity.did);
-      const doctorIssued = issued
-        .map((entry) => ({
-          ...entry,
-          issuerDid: extractIssuerDid(entry.credential),
-        }))
+      const hybrid = await listHybridCredentialsBySubjectDid(patientIdentity.did);
+      const doctorIssued = hybrid
         .filter((entry) => String(entry.issuerDid || "").toLowerCase() === doctorIdentity.did.toLowerCase())
         .map((entry) => ({
           issuedAt: entry.issuedAt,
           credentialType: entry.credentialType,
           issuerDid: entry.issuerDid,
-          credential: entry.credential,
+          credential: null,
+          mode: "hybrid",
+          cid: entry.cid,
+          payloadHash: entry.payloadHash,
+          recordId: entry.recordId || null,
+          txHash: entry.txHash || null,
+          chainId: entry.chainId || null,
+          contractAddress: entry.contractAddress || null,
+          onChainFinalized: Boolean(entry.recordId && entry.contractAddress),
         }));
+
+      const finalized = doctorIssued.filter((entry) => entry.onChainFinalized);
+      const pending = doctorIssued.filter((entry) => !entry.onChainFinalized);
 
       return res.json({
         success: true,
         patientDid: patientIdentity.did,
-        total: doctorIssued.length,
-        credentials: doctorIssued,
+        total: finalized.length,
+        credentials: finalized,
+        pendingCount: pending.length,
+        pendingCredentials: pending,
       });
     } catch (error: any) {
       const message = error?.message || "Failed to load patient credentials";

@@ -152,21 +152,32 @@ async function uploadEncryptedPayloadToPinata(input: {
 
 async function fetchEncryptedPayloadFromPinata(cid: string) {
   const gatewayBase = getPinataGatewayBase()
-  const response = await fetch(`${gatewayBase}/ipfs/${encodeURIComponent(cid)}`)
+  const url = `${gatewayBase}/ipfs/${encodeURIComponent(cid)}`
+  console.log(`[PINATA] Fetching from gateway: ${url}`)
+  
+  const response = await fetch(url)
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
-    throw new Error(`Failed to fetch encrypted payload from Pinata gateway (${response.status}): ${detail || 'unknown error'}`)
+    const errorMsg = `Failed to fetch from Pinata (${response.status}): ${detail || 'unknown error'}`
+    console.error(`[PINATA] ${errorMsg}`)
+    throw new Error(errorMsg)
   }
 
+  console.log(`[PINATA] Got response, status ${response.status}, parsing JSON...`)
   const payload = (await response.json()) as {
     encryptedCredentialHex?: string
   }
 
+  console.log(`[PINATA] Parsed payload, hasEncryptedCredentialHex: ${!!payload?.encryptedCredentialHex}`)
+  
   const encryptedCredentialHex = String(payload?.encryptedCredentialHex || '').trim()
   if (!encryptedCredentialHex) {
-    throw new Error('Pinata payload missing encryptedCredentialHex')
+    const errorMsg = 'Pinata payload missing encryptedCredentialHex'
+    console.error(`[PINATA] ${errorMsg}, payload keys: ${Object.keys(payload).join(', ')}`)
+    throw new Error(errorMsg)
   }
 
+  console.log(`[PINATA] Success! Retrieved encrypted hex, length: ${encryptedCredentialHex.length}`)
   return encryptedCredentialHex
 }
 
@@ -298,11 +309,20 @@ export async function getHybridCredentialByCid(cid: string) {
   const found = store.records.find((entry) => entry.cid === target) || null
   if (!found) return null
 
+  console.log(`[GET_CID] Found record, storageMode: ${found.storageMode}, hasLocalEncryptedHex: ${!!found.encryptedCredentialHex}`);
+  
   if (found.storageMode === 'pinata' && !String(found.encryptedCredentialHex || '').trim()) {
-    const encryptedCredentialHex = await fetchEncryptedPayloadFromPinata(found.cid)
-    return {
-      ...found,
-      encryptedCredentialHex,
+    console.log(`[GET_CID] Need to fetch from Pinata for CID: ${found.cid}`);
+    try {
+      const encryptedCredentialHex = await fetchEncryptedPayloadFromPinata(found.cid)
+      console.log(`[GET_CID] Successfully fetched from Pinata, hex length: ${encryptedCredentialHex.length}`);
+      return {
+        ...found,
+        encryptedCredentialHex,
+      }
+    } catch (error: any) {
+      console.error(`[GET_CID] Failed to fetch from Pinata:`, error?.message);
+      throw error;
     }
   }
 
@@ -314,6 +334,13 @@ export async function listHybridCredentialsBySubjectWallet(subjectWallet: string
   if (!target) return []
   const store = await readStore()
   return store.records.filter((entry) => entry.subjectWallet === target)
+}
+
+export async function listHybridCredentialsBySubjectDid(subjectDid: string) {
+  const target = String(subjectDid || '').trim()
+  if (!target) return []
+  const store = await readStore()
+  return store.records.filter((entry) => entry.subjectDid === target)
 }
 
 export async function findHybridByLegacyReference(subjectDid: string, legacyIssuedAt: string, credentialType: string) {

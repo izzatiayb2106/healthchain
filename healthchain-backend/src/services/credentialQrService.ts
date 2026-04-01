@@ -7,7 +7,11 @@ export type CredentialQrSession = {
   subjectDid: string
   issuedAt: string
   credentialType: string
-  credential: any
+  cid: string
+  payloadHash: string
+  recordId: string
+  contractAddress: string
+  chainId?: string
   createdByWallet: string
   createdAt: string
   expiresAt: string
@@ -51,7 +55,11 @@ export async function createCredentialQrSession(input: {
   subjectDid: string
   issuedAt: string
   credentialType: string
-  credential: any
+  cid: string
+  payloadHash: string
+  recordId: string
+  contractAddress: string
+  chainId?: string
   createdByWallet: string
   ttlSeconds?: number
 }) {
@@ -67,7 +75,11 @@ export async function createCredentialQrSession(input: {
     subjectDid: String(input.subjectDid || '').trim(),
     issuedAt: String(input.issuedAt || '').trim(),
     credentialType: String(input.credentialType || '').trim(),
-    credential: input.credential,
+    cid: String(input.cid || '').trim(),
+    payloadHash: String(input.payloadHash || '').trim(),
+    recordId: String(input.recordId || '').trim(),
+    contractAddress: String(input.contractAddress || '').trim().toLowerCase(),
+    chainId: String(input.chainId || '').trim() || undefined,
     createdByWallet: String(input.createdByWallet || '').trim().toLowerCase(),
     createdAt: now.toISOString(),
     expiresAt,

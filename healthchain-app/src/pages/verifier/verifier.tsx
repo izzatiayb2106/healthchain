@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import axios from 'axios';
 import { ethers } from 'ethers';
 import { Html5Qrcode } from 'html5-qrcode';
+import { apiClient } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryContract } from '../../blockchain/credentialRegistry';
 import './verifier.css';
 
@@ -32,34 +32,6 @@ const VerifierDashboard: React.FC = () => {
 	const [hybridResult, setHybridResult] = useState<HybridVerifyResult | null>(null);
 	const [scanError, setScanError] = useState<string | null>(null);
 	const [isScanning, setIsScanning] = useState(false);
-
-	const buildAuthHeaders = async () => {
-		const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
-		if (!wallet) {
-			throw new Error('No wallet found. Please log in again.');
-		}
-
-		if (!(window as any).ethereum) {
-			throw new Error('MetaMask is required for verifier access.');
-		}
-
-		const provider = new ethers.BrowserProvider((window as any).ethereum);
-		await provider.send('eth_requestAccounts', []);
-		const signer = await provider.getSigner();
-		const activeWallet = (await signer.getAddress()).toLowerCase();
-		if (activeWallet !== wallet) {
-			throw new Error('Please switch MetaMask to the same wallet used at login.');
-		}
-
-		const message = `Verifier access auth for ${wallet} at ${new Date().toISOString()}`;
-		const signature = await signer.signMessage(message);
-
-		return {
-			'x-user-wallet': wallet,
-			'x-user-message': message,
-			'x-user-signature': signature,
-		};
-	};
 
 	const parseCredentialSubject = (credential: any) => {
 		try {
@@ -125,12 +97,22 @@ const VerifierDashboard: React.FC = () => {
 				// Not a hybrid JSON payload, continue with session-token verification.
 			}
 
-			const headers = await buildAuthHeaders();
-			const response = await axios.post(
-				'http://localhost:3001/credential/qr/verify',
-				{ tokenOrPayload: value },
-				{ headers }
+			const response = await apiClient.post(
+				'/credential/qr/verify',
+				{ tokenOrPayload: value }
 			);
+
+			if (String(response.data?.mode || '') === 'hybrid') {
+				setHybridResult({
+					valid: Boolean(response.data?.credentialVerified),
+					recordId: String(response.data?.recordId || ''),
+					cid: String(response.data?.cid || ''),
+					payloadHash: String(response.data?.payloadHash || ''),
+					contractAddress: String(response.data?.contractAddress || ''),
+				});
+				return;
+			}
+
 			setResult(response.data as VerifiedCredential);
 		} catch (err: any) {
 			const detail =

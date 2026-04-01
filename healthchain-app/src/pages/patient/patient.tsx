@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import React, { useEffect, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { QRCodeSVG } from 'qrcode.react';
+import { apiClient, getStoredToken } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryAddress, getCredentialRegistryContract, mapChainRecordTuple, type HybridChainRecord } from '../../blockchain/credentialRegistry';
 import './patient.css';
 
@@ -20,6 +20,7 @@ type PatientProfile = {
 	phone: string;
 	email: string;
 	emergencyContact: string;
+	encryptionPublicKey?: string;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -32,6 +33,13 @@ type DoctorIssuedCredential = {
 	issuerRole: string;
 	issuedByDoctor: boolean;
 	credential: any;
+	mode?: 'hybrid' | 'legacy';
+	cid?: string | null;
+	payloadHash?: string | null;
+	recordId?: string | null;
+	txHash?: string | null;
+	chainId?: string | null;
+	contractAddress?: string | null;
 };
 
 type QrSession = {
@@ -60,6 +68,8 @@ const emptyProfileForm = {
 	email: '',
 	emergencyContact: '',
 };
+
+const CHAIN_READ_RPC_URL = String(import.meta.env.VITE_CHAIN_READ_RPC_URL || 'http://127.0.0.1:8545').trim();
 
 const PatientDashboard: React.FC = () => {
 	const [profile, setProfile] = useState<PatientProfile | null>(null);
@@ -95,34 +105,9 @@ const PatientDashboard: React.FC = () => {
 	const [selectedHybridRecordId, setSelectedHybridRecordId] = useState<string | null>(null);
 	const [hybridDecrypted, setHybridDecrypted] = useState<HybridDecryptedView | null>(null);
 	const [hybridQrPayload, setHybridQrPayload] = useState<string | null>(null);
+	const encryptionKeyRegistrationTriedRef = useRef(false);
 
-	const buildAuthHeaders = async () => {
-		const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
-		if (!wallet) {
-			throw new Error('No wallet found. Please log in again.');
-		}
 
-		if (!window.ethereum) {
-			throw new Error('MetaMask is required for secure patient access.');
-		}
-
-		const provider = new ethers.BrowserProvider(window.ethereum);
-		await provider.send('eth_requestAccounts', []);
-		const signer = await provider.getSigner();
-		const activeWallet = (await signer.getAddress()).toLowerCase();
-		if (activeWallet !== wallet) {
-			throw new Error('Please switch MetaMask to the same wallet used at login.');
-		}
-
-		const message = `Patient access auth for ${wallet} at ${new Date().toISOString()}`;
-		const signature = await signer.signMessage(message);
-
-		return {
-			'x-user-wallet': wallet,
-			'x-user-message': message,
-			'x-user-signature': signature,
-		};
-	};
 
 	const hydrateProfileForm = (value: PatientProfile) => {
 		setProfileForm({
@@ -142,10 +127,8 @@ const PatientDashboard: React.FC = () => {
 			setProfileError(null);
 			setCredentialsError(null);
 
-			const headers = await buildAuthHeaders();
-
 			try {
-				const profileRes = await axios.get('http://localhost:3001/patient/profile/me', { headers });
+				const profileRes = await apiClient.get('/patient/profile/me');
 				const loadedProfile = profileRes.data?.profile as PatientProfile;
 				setProfile(loadedProfile);
 				hydrateProfileForm(loadedProfile);
@@ -160,7 +143,7 @@ const PatientDashboard: React.FC = () => {
 				}
 			}
 
-			const credentialsRes = await axios.get('http://localhost:3001/patient/credentials/me', { headers });
+			const credentialsRes = await apiClient.get('/patient/credentials/me');
 			setCredentials(Array.isArray(credentialsRes.data?.credentials) ? credentialsRes.data.credentials : []);
 		} catch (error: any) {
 			const detail = error?.response?.data?.error || error?.message || 'Failed to load patient dashboard';
@@ -176,23 +159,45 @@ const PatientDashboard: React.FC = () => {
 		try {
 			if (!window.ethereum) return;
 			const wallet = String(localStorage.getItem('hc_wallet') || '').trim();
-			if (!wallet) return;
+			if (!wallet) {
+				console.warn('[ENCRYPTION] No wallet in localStorage');
+				return;
+			}
 
-			const headers = await buildAuthHeaders();
+			const accounts = await window.ethereum.request({ method: 'eth_accounts' }) as string[];
+			const selectedAccountRaw = String(accounts?.[0] || '').trim();
+			const selectedAccountLower = selectedAccountRaw.toLowerCase();
+			if (!selectedAccountRaw) {
+				console.warn('[ENCRYPTION] No selected MetaMask account found');
+				return;
+			}
+			if (selectedAccountLower !== wallet.toLowerCase()) {
+				console.warn('[ENCRYPTION] Selected account differs from stored wallet', {
+					selectedAccount: selectedAccountRaw,
+					storedWallet: wallet,
+				});
+			}
+
+			console.log(`[ENCRYPTION] Getting encryption public key for wallet: ${selectedAccountRaw}`);
 			const encryptionPublicKey = await window.ethereum.request({
 				method: 'eth_getEncryptionPublicKey',
-				params: [wallet],
+				params: [selectedAccountRaw],
 			});
 
-			if (!String(encryptionPublicKey || '').trim()) return;
+			if (!String(encryptionPublicKey || '').trim()) {
+				console.warn('[ENCRYPTION] Empty encryption public key returned from MetaMask');
+				return;
+			}
 
-			await axios.post(
-				'http://localhost:3001/patient/profile/me/encryption-key',
-				{ encryptionPublicKey },
-				{ headers }
+			console.log('[ENCRYPTION] Registering encryption public key with backend');
+			await apiClient.post(
+				'/patient/profile/me/encryption-key',
+				{ encryptionPublicKey }
 			);
-		} catch {
+			console.log('[ENCRYPTION] Successfully registered encryption public key');
+		} catch (error: any) {
 			// User may reject permission. Hybrid issuance can be retried after consent.
+			console.error('[ENCRYPTION] Failed to register encryption key:', error?.message || error);
 		}
 	};
 
@@ -202,40 +207,53 @@ const PatientDashboard: React.FC = () => {
 			setHybridError(null);
 			setHybridDecrypted(null);
 
-			if (!window.ethereum) {
-				setHybridError('MetaMask is required to load on-chain records.');
-				return;
-			}
-
 			const registryAddress = getCredentialRegistryAddress();
 			if (!registryAddress) {
 				setHybridError('VITE_CREDENTIAL_REGISTRY_ADDRESS is not configured.');
 				return;
 			}
 
-			const provider = new ethers.BrowserProvider(window.ethereum);
-			await provider.send('eth_requestAccounts', []);
-			const signer = await provider.getSigner();
-			const wallet = (await signer.getAddress()).toLowerCase();
+			const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
+			if (!wallet) {
+				setHybridError('No wallet found. Please log in again.');
+				return;
+			}
+
+			console.log('Loading hybrid records:', { registryAddress, wallet, rpcUrl: CHAIN_READ_RPC_URL });
+			
+			const provider = new ethers.JsonRpcProvider(CHAIN_READ_RPC_URL);
 			await assertCredentialRegistryDeployed(provider, registryAddress);
 			const contract = getCredentialRegistryContract(provider);
 
 			const count = Number(await contract.getPatientRecordCount(wallet));
+			console.log('Patient record count:', count);
+			
 			const records: HybridChainRecord[] = [];
 			for (let index = 0; index < count; index += 1) {
-				const tuple = await contract.getPatientRecordAt(wallet, index);
-				records.push(mapChainRecordTuple(tuple));
+				try {
+					const tuple = await contract.getPatientRecordAt(wallet, index);
+					console.log(`Record ${index}:`, tuple);
+					records.push(mapChainRecordTuple(tuple));
+				} catch (recordError: any) {
+					console.error(`Failed to load record ${index}:`, recordError);
+				}
 			}
 
+			console.log('Loaded hybrid records:', records);
 			records.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
 			setHybridRecords(records);
 		} catch (error: any) {
+			const raw = String(error?.shortMessage || error?.message || '').toLowerCase();
 			const detail =
 				error?.response?.data?.error ||
+				((raw.includes('unrecognized selector') || raw.includes('missing revert data') || raw.includes('call exception'))
+					? 'Configured contract address does not match CredentialRegistry on this network. Redeploy, update VITE_CREDENTIAL_REGISTRY_ADDRESS, and restart frontend.'
+					: null) ||
 				(error?.code === 'BAD_DATA'
 					? 'Unable to read CredentialRegistry. Contract address or selected network is incorrect.'
 					: error?.message) ||
 				'Failed to load on-chain records';
+			console.error('loadHybridRecords error:', error);
 			setHybridError(detail);
 		} finally {
 			setHybridLoading(false);
@@ -253,16 +271,60 @@ const PatientDashboard: React.FC = () => {
 				return;
 			}
 
-			const headers = await buildAuthHeaders();
-			const payloadRes = await axios.get(`http://localhost:3001/credential/hybrid/cid/${encodeURIComponent(record.cid)}`, { headers });
-			const encryptedCredentialHex = String(payloadRes.data?.encryptedCredentialHex || '').trim();
-			const expectedHash = String(payloadRes.data?.payloadHash || record.payloadHash || '').trim();
-			if (!encryptedCredentialHex) {
-				setHybridError('Encrypted payload not found for selected record.');
+			// Check wallet
+			const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
+			if (!wallet) {
+				setHybridError('No wallet found. Please log in again.');
+				return;
+			}
+			console.log(`[DECRYPT] Decrypting for credential ${record.recordId}, wallet: ${wallet}`);
+
+			// Get current MetaMask account
+			const accounts = await window.ethereum.request({ method: 'eth_accounts' }) as string[];
+			const selectedAccountRaw = String(accounts?.[0] || '').trim();
+			const currentAccount = selectedAccountRaw.toLowerCase();
+			console.log(`[DECRYPT] Current MetaMask account: ${currentAccount}, expected wallet: ${wallet}`);
+			
+			if (currentAccount !== wallet) {
+				setHybridError(
+					`MetaMask account mismatch:\n` +
+					`Currently selected: ${currentAccount}\n` +
+					`Expected wallet: ${wallet}\n\n` +
+					`Please switch to the correct account in MetaMask that matches your patient wallet.`
+				);
 				return;
 			}
 
-			const validateRes = await axios.post('http://localhost:3001/credential/hybrid/validate-payload', {
+			console.log(`[DECRYPT] Fetching encrypted payload from backend (CID: ${record.cid})`);
+			const payloadRes = await apiClient.get(`/credential/hybrid/cid/${encodeURIComponent(record.cid)}`);
+			const encryptedCredentialHex = String(payloadRes.data?.encryptedCredentialHex || '').trim();
+			const expectedHash = String(payloadRes.data?.payloadHash || record.payloadHash || '').trim();
+			
+			console.log('[DECRYPT] Backend response:', {
+				cid: record.cid,
+				hasEncryptedHex: !!encryptedCredentialHex,
+				hexLength: encryptedCredentialHex?.length,
+				hexStart: encryptedCredentialHex?.substring(0, 20),
+				payloadHash: expectedHash,
+			});
+			
+			if (!encryptedCredentialHex) {
+				setHybridError(
+					'Encrypted payload not found for selected record.\n\n' +
+					'The credential may not have been properly encrypted during issuance.\n' +
+					'This typically happens if:\n' +
+					'• Your encryption public key was not registered\n' +
+					'• The Pinata/IPFS upload failed\n' +
+					'• There was a backend error during credential preparation\n\n' +
+					'Solution: Request a new credential from your doctor.\n' +
+					'Make sure to approve the encryption key permission when prompted.'
+				);
+				return;
+			}
+			console.log(`[DECRYPT] Got encrypted payload, hash: ${expectedHash}`);
+
+			console.log(`[DECRYPT] Validating payload integrity`);
+			const validateRes = await apiClient.post('/credential/hybrid/validate-payload', {
 				payloadHash: expectedHash,
 				encryptedCredentialHex,
 			});
@@ -271,20 +333,50 @@ const PatientDashboard: React.FC = () => {
 				return;
 			}
 
-			const wallet = String(localStorage.getItem('hc_wallet') || '').trim();
+			// Validate hex format before sending to MetaMask
+			if (!encryptedCredentialHex.startsWith('0x')) {
+				setHybridError('Invalid encrypted data format: Missing 0x prefix. The credential may be corrupted.');
+				return;
+			}
+			if (encryptedCredentialHex.length < 10) {
+				setHybridError('Invalid encrypted data format: Data too short. The credential may be corrupted or empty.');
+				return;
+			}
+			const isValidHex = /^0x[0-9a-fA-F]*$/.test(encryptedCredentialHex);
+			if (!isValidHex) {
+				setHybridError('Invalid encrypted data format: Not valid hexadecimal. The credential data may be corrupted.');
+				return;
+			}
+
+			console.log(`[DECRYPT] Encrypted data format valid, requesting MetaMask to decrypt...`, {
+				isHex: true,
+				startsWithPrefix: true,
+				length: encryptedCredentialHex.length,
+			});
+			
 			const vcJwt = await window.ethereum.request({
 				method: 'eth_decrypt',
-				params: [encryptedCredentialHex, wallet],
+				params: [encryptedCredentialHex, selectedAccountRaw],
 			});
 
+			if (!vcJwt) {
+				setHybridError('MetaMask returned empty JWT. Decryption may have failed.');
+				return;
+			}
+
+			console.log(`[DECRYPT] Successfully decrypted credential`);
 			setHybridDecrypted({
-				vcJwt: String(vcJwt || ''),
+				vcJwt: String(vcJwt),
 				payloadHash: expectedHash,
 				cid: record.cid,
 			});
 		} catch (error: any) {
+			console.error('[DECRYPT] Decryption error:', error);
 			const detail = error?.response?.data?.error || error?.message || 'Failed to decrypt on-chain record';
-			setHybridError(detail);
+			setHybridError(
+				`Decryption failed:\n${detail}\n\n` +
+				`Check browser console ([DECRYPT] logs) for details.`
+			);
 		} finally {
 			setSelectedHybridRecordId(null);
 		}
@@ -314,8 +406,60 @@ const PatientDashboard: React.FC = () => {
 		}
 
 		void loadDashboardData();
-		void registerEncryptionPublicKey();
 		void loadHybridRecords();
+	}, []);
+
+	useEffect(() => {
+		if (!profile || String(profile.encryptionPublicKey || '').trim()) {
+			return;
+		}
+		if (encryptionKeyRegistrationTriedRef.current) {
+			return;
+		}
+		encryptionKeyRegistrationTriedRef.current = true;
+		void registerEncryptionPublicKey();
+	}, [profile]);
+
+	// Set up SSE connection for real-time credential updates
+	useEffect(() => {
+		const token = getStoredToken();
+		if (!token) {
+			console.log('[SSE] No JWT token available for SSE connection');
+			return;
+		}
+
+		try {
+			console.log('[SSE] Connecting to credential events...');
+			const eventSource = new EventSource(`http://localhost:3001/auth/events?token=${encodeURIComponent(token)}`);
+
+			const handleCredentialIssued = () => {
+				console.log('[SSE] Received credential-issued event, reloading credentials...');
+				void loadDashboardData();
+				void loadHybridRecords();
+			};
+
+			const handleCredentialFinalized = () => {
+				console.log('[SSE] Received credential-finalized event, reloading hybrid records...');
+				void loadHybridRecords();
+			};
+
+			eventSource.addEventListener('credential-issued', handleCredentialIssued);
+			eventSource.addEventListener('credential-finalized', handleCredentialFinalized);
+
+			eventSource.addEventListener('error', (error: any) => {
+				console.error('[SSE] Connection error:', error);
+				eventSource.close();
+			});
+
+			return () => {
+				console.log('[SSE] Closing connection');
+				eventSource.removeEventListener('credential-issued', handleCredentialIssued);
+				eventSource.removeEventListener('credential-finalized', handleCredentialFinalized);
+				eventSource.close();
+			};
+		} catch (error) {
+			console.error('[SSE] Failed to set up connection:', error);
+		}
 	}, []);
 
 	useEffect(() => {
@@ -346,6 +490,7 @@ const PatientDashboard: React.FC = () => {
 		localStorage.removeItem('hc_wallet');
 		localStorage.removeItem('hc_did');
 		localStorage.removeItem('hc_role');
+		localStorage.removeItem('hc_jwt_token');
 		window.location.href = '/login';
 	};
 
@@ -367,8 +512,6 @@ const PatientDashboard: React.FC = () => {
 				return;
 			}
 
-			const headers = await buildAuthHeaders();
-			const endpoint = 'http://localhost:3001/patient/profile/me';
 			const payload = {
 				fullName: profileForm.fullName,
 				dateOfBirth: profileForm.dateOfBirth,
@@ -379,8 +522,8 @@ const PatientDashboard: React.FC = () => {
 			};
 
 			const response = mode === 'create'
-				? await axios.post(endpoint, payload, { headers })
-				: await axios.put(endpoint, payload, { headers });
+				? await apiClient.post('/patient/profile/me', payload)
+				: await apiClient.put('/patient/profile/me', payload);
 
 			const saved = response.data?.profile as PatientProfile;
 			setProfile(saved);
@@ -422,7 +565,7 @@ const PatientDashboard: React.FC = () => {
 			const message = `Doctor access application for ${address} at ${new Date().toISOString()}`;
 			const signature = await signer.signMessage(message);
 
-			await axios.post('http://localhost:3001/auth/professional/access', {
+			await apiClient.post('http://localhost:3001/auth/professional/access', {
 				address,
 				did,
 				professionalId: professionalId.trim(),
@@ -457,11 +600,9 @@ const PatientDashboard: React.FC = () => {
 		try {
 			setQrError(null);
 			setQrLoadingForIssuedAt(entry.issuedAt);
-			const headers = await buildAuthHeaders();
-			const response = await axios.post(
-				'http://localhost:3001/credential/qr/create',
-				{ issuedAt: entry.issuedAt, credentialType: entry.credentialType },
-				{ headers }
+			const response = await apiClient.post(
+				'/credential/qr/create',
+				{ issuedAt: entry.issuedAt, credentialType: entry.credentialType }
 			);
 
 			setQrSession({
@@ -488,6 +629,19 @@ const PatientDashboard: React.FC = () => {
 		setQrSecondsRemaining(0);
 	};
 
+	const onChainCredentialKeys = new Set(
+		hybridRecords.map((record) => `${String(record.cid || '').trim()}|${String(record.payloadHash || '').trim().toLowerCase()}`)
+	);
+
+	const pendingHybridCredentials = credentials.filter(
+		(entry) =>
+			entry.mode === 'hybrid' &&
+			(!String(entry.recordId || '').trim() || !String(entry.contractAddress || '').trim()) &&
+			!onChainCredentialKeys.has(
+				`${String(entry.cid || '').trim()}|${String(entry.payloadHash || '').trim().toLowerCase()}`
+			)
+	);
+
 	const registerWithDoctor = async (event: React.FormEvent) => {
 		event.preventDefault();
 		if (registeringWithDoctor) return;
@@ -510,13 +664,10 @@ const PatientDashboard: React.FC = () => {
 				return;
 			}
 
-			const headers = await buildAuthHeaders();
-
 			// POST to patient endpoint — authenticated as the patient themselves
-			await axios.post(
-				'http://localhost:3001/patient/register-with-doctor',
-				{ doctorWallet },
-				{ headers }
+			await apiClient.post(
+				'/patient/register-with-doctor',
+				{ doctorWallet }
 			);
 
 			alert(`Successfully registered with doctor ${doctorWallet.substring(0, 10)}...!\n\nThe doctor can now see you in their patient list and issue credentials to you.`);
@@ -667,42 +818,70 @@ const PatientDashboard: React.FC = () => {
 
 			<section className="patient-card">
 				<h2>Vaccination Certificates</h2>
-				<p>Unified history for legacy and blockchain/IPFS credentials. Legacy cards use session QR, on-chain cards use verification QR.</p>
+
 				<div className="scanner-actions">
 					<button className="btn request" type="button" onClick={() => void loadHybridRecords()} disabled={hybridLoading}>
-						{hybridLoading ? 'Refreshing records...' : 'Refresh On-Chain Records'}
+						{hybridLoading ? 'Refreshing records...' : 'Refresh'}
 					</button>
 				</div>
+				<p>
+					<strong>On-chain:</strong> {hybridRecords.length} record(s) • <strong>Pending finalization:</strong> {pendingHybridCredentials.length}
+				</p>
 				{qrError ? <div className="doctor-apply-error">{qrError}</div> : null}
 				{credentialsError ? <div className="doctor-apply-error">{credentialsError}</div> : null}
 				{hybridError ? <div className="doctor-apply-error">{hybridError}</div> : null}
 				{credentialsLoading || hybridLoading ? <p>Loading credentials...</p> : null}
-				{!credentialsLoading && !hybridLoading && credentials.length === 0 && hybridRecords.length === 0 ? (
+				{!credentialsLoading && !hybridLoading && pendingHybridCredentials.length === 0 && hybridRecords.length === 0 ? (
 					<p>No credentials found yet.</p>
 				) : null}
 
 				<div className="credential-list">
-					{credentials.map((entry, index) => {
+					{credentials.filter((entry) => entry.mode !== 'hybrid').map((entry, index) => {
 						const subject = parseCredentialSubject(entry.credential);
 						const isGeneratingQr = qrLoadingForIssuedAt === entry.issuedAt;
+						const isLegacy = entry.mode !== 'hybrid';
 						return (
-							<article key={`${entry.issuedAt}-${index}`} className="credential-card credential-card-clickable" onClick={() => void openCredentialQr(entry)}>
+							<article
+								key={`${entry.issuedAt}-${index}`}
+								className={`credential-card ${isLegacy ? 'credential-card-clickable' : ''}`}
+								onClick={isLegacy ? (() => void openCredentialQr(entry)) : undefined}
+							>
 								<h3>{entry.credentialType}</h3>
-								<p><strong>Source:</strong> Legacy issuance record</p>
+						
 								<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
 								<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
-								<p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
-								{subject?.name ? <p><strong>Subject name:</strong> {String(subject.name)}</p> : null}
-								<p className="credential-qr-hint">{isGeneratingQr ? 'Generating secure QR...' : 'Tap to generate verifier QR'}</p>
-
+								{isLegacy ? (
+									<>
+										<p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
+										{subject?.name ? <p><strong>Subject name:</strong> {String(subject.name)}</p> : null}
+										<p className="credential-qr-hint">{isGeneratingQr ? 'Generating secure QR...' : 'Tap to generate verifier QR'}</p>
+									</>
+								) : (
+									<>
+										<p><strong>Record ID:</strong> {entry.recordId || 'Pending'}</p>
+										<p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
+										<p><strong>Tx Hash:</strong> {entry.txHash || 'Pending confirmation'}</p>
+									</>
+								)}
 							</article>
 						);
 					})}
 
+					{pendingHybridCredentials.map((entry, index) => (
+						<article key={`pending-hybrid-${entry.issuedAt}-${index}`} className="credential-card">
+							<h3>{entry.credentialType}</h3>
+							<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
+							<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
+							<p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
+							<p><strong>Payload Hash:</strong> {entry.payloadHash || 'Not available'}</p>
+							<p><strong>Status:</strong> Waiting for on-chain confirmation</p>
+						</article>
+					))}
+
 					{hybridRecords.map((record) => (
 						<article key={`hybrid-${record.recordId}`} className="credential-card">
 							<h3>{record.credentialType}</h3>
-							<p><strong>Source:</strong> Blockchain + IPFS hybrid</p>
+							
 							<p><strong>Record ID:</strong> {record.recordId}</p>
 							<p><strong>CID:</strong> {record.cid}</p>
 							<p><strong>Hash:</strong> {record.payloadHash}</p>

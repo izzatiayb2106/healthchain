@@ -45,6 +45,30 @@ export async function assertCredentialRegistryDeployed(provider: ethers.Provider
     );
   }
 
+  // Some local chains can have bytecode at this address for a different contract.
+  // Probe a known view selector to ensure ABI/address compatibility before writes.
+  try {
+    const probeContract = new ethers.Contract(
+      address,
+      ['function getPatientRecordCount(address patient) view returns (uint256)'],
+      provider
+    );
+    await probeContract.getPatientRecordCount(ethers.ZeroAddress);
+  } catch (error: any) {
+    const message = String(error?.shortMessage || error?.message || '').toLowerCase();
+    if (
+      message.includes('unrecognized selector') ||
+      message.includes('missing revert data') ||
+      message.includes('call exception')
+    ) {
+      throw new Error(
+        `Contract at ${address} is not a compatible CredentialRegistry on chainId ${String(network.chainId)}. ` +
+        `Redeploy CredentialRegistry and restart the frontend so VITE_CREDENTIAL_REGISTRY_ADDRESS is reloaded.`
+      );
+    }
+    throw error;
+  }
+
   return address;
 }
 

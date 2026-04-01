@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { ethers } from 'ethers';
+import { apiClient, getStoredToken } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryContract, getCredentialRegistryAddress } from '../../blockchain/credentialRegistry';
 import './doctor.css';
 
@@ -29,6 +29,11 @@ type IssuedCredentialEntry = {
     credentialType: string;
     issuerDid: string;
     credential: any;
+    mode?: 'hybrid' | 'legacy';
+    cid?: string | null;
+    payloadHash?: string | null;
+    recordId?: string | null;
+    txHash?: string | null;
 };
 
 const initialVaccineForm = {
@@ -106,41 +111,14 @@ const DoctorDashboard: React.FC = () => {
         setEditAvatarPreviewError(false);
     };
 
-    const buildAuthHeaders = async () => {
-        const wallet = String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase();
-        if (!wallet) {
-            throw new Error('No wallet found. Please log in again.');
-        }
 
-        if (!(window as any).ethereum) {
-            throw new Error('MetaMask is required to authenticate this action.');
-        }
-
-        const provider = new ethers.BrowserProvider((window as any).ethereum);
-        await provider.send('eth_requestAccounts', []);
-        const signer = await provider.getSigner();
-        const activeWallet = (await signer.getAddress()).toLowerCase();
-        if (activeWallet !== wallet) {
-            throw new Error('Please switch MetaMask to the same wallet used at login.');
-        }
-
-        const message = `Doctor profile auth for ${wallet} at ${new Date().toISOString()}`;
-        const signature = await signer.signMessage(message);
-
-        return {
-            'x-user-wallet': wallet,
-            'x-user-message': message,
-            'x-user-signature': signature,
-        };
-    };
 
     const loadProfile = async () => {
         try {
             setProfileLoading(true);
             setProfileError(null);
 
-            const headers = await buildAuthHeaders();
-            const response = await axios.get('http://localhost:3001/doctor/profile/me', { headers });
+            const response = await apiClient.get('/doctor/profile/me');
             const loadedProfile = response.data?.profile as DoctorProfile;
             const needsOnboarding = Boolean(response.data?.needsOnboarding);
 
@@ -163,23 +141,10 @@ const DoctorDashboard: React.FC = () => {
 
     const loadPendingPatients = async () => {
         try {
-            const headers = await buildAuthHeaders();
-            const response = await axios.get('http://localhost:3001/doctor/pending-patients/me', { headers });
+            const response = await apiClient.get('/doctor/pending-patients/me');
             setPendingPatients(response.data?.pendingPatients || []);
         } catch (error: any) {
             console.error('Failed to load pending patients:', error);
-        }
-    };
-
-    const parseCredentialSubject = (credential: any) => {
-        try {
-            if (typeof credential === 'string') {
-                const payload = JSON.parse(atob(credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-                return payload?.vc?.credentialSubject || null;
-            }
-            return credential?.credentialSubject || credential?.vc?.credentialSubject || null;
-        } catch {
-            return null;
         }
     };
 
@@ -187,10 +152,8 @@ const DoctorDashboard: React.FC = () => {
         try {
             setPatientCredentialsLoading(true);
             setPatientCredentialsError(null);
-            const headers = await buildAuthHeaders();
-            const response = await axios.get(
-                `http://localhost:3001/doctor/patient-credentials/${encodeURIComponent(patient.did)}`,
-                { headers }
+            const response = await apiClient.get(
+                `/doctor/patient-credentials/${encodeURIComponent(patient.did)}`
             );
             setSelectedPatientCredentials(Array.isArray(response.data?.credentials) ? response.data.credentials : []);
         } catch (error: any) {
@@ -208,10 +171,8 @@ const DoctorDashboard: React.FC = () => {
         void loadPatientCredentials(patient);
 
         try {
-            const headers = await buildAuthHeaders();
-            const response = await axios.get(
-                `http://localhost:3001/doctor/patient-profile/${encodeURIComponent(patient.did)}`,
-                { headers }
+            const response = await apiClient.get(
+                `/doctor/patient-profile/${encodeURIComponent(patient.did)}`
             );
             const profileFromPatient = response.data?.profile;
 
@@ -235,12 +196,10 @@ const DoctorDashboard: React.FC = () => {
         try {
             setResolvingWallet(true);
             setCredentialError(null);
-            const headers = await buildAuthHeaders();
 
-            const response = await axios.post(
-                'http://localhost:3001/doctor/pending-patients',
-                { patientWallet: wallet, patientDid: wallet },
-                { headers }
+            const response = await apiClient.post(
+                '/doctor/pending-patients',
+                { patientWallet: wallet, patientDid: wallet }
             );
 
             const patients = response.data?.pendingPatients?.patients || [];
@@ -268,10 +227,8 @@ const DoctorDashboard: React.FC = () => {
         try {
             setRemovingPatientWallet(wallet);
             setCredentialError(null);
-            const headers = await buildAuthHeaders();
-            const response = await axios.delete(
-                `http://localhost:3001/doctor/pending-patients/${encodeURIComponent(wallet)}`,
-                { headers }
+            const response = await apiClient.delete(
+                `/doctor/pending-patients/${encodeURIComponent(wallet)}`
             );
 
             const updatedPatients = response.data?.pendingPatients || [];
@@ -307,7 +264,13 @@ const DoctorDashboard: React.FC = () => {
         try {
             setCredentialLoading(true);
             setCredentialError(null);
-            const headers = await buildAuthHeaders();
+
+            const debugId = `issue-${Date.now()}`;
+            console.log(`[ISSUE][${debugId}] Start issuance flow`, {
+                selectedPatient,
+                jwtWallet: String(localStorage.getItem('hc_wallet') || '').toLowerCase(),
+                registryAddress: getCredentialRegistryAddress(),
+            });
 
             if (!(window as any).ethereum) {
                 throw new Error('MetaMask is required for blockchain issuance.');
@@ -316,12 +279,32 @@ const DoctorDashboard: React.FC = () => {
             const provider = new ethers.BrowserProvider((window as any).ethereum);
             await provider.send('eth_requestAccounts', []);
             const signer = await provider.getSigner();
+            const signerAddress = String(await signer.getAddress()).toLowerCase();
+            const network = await provider.getNetwork();
+            const balance = await provider.getBalance(signerAddress);
+            const feeData = await provider.getFeeData();
+            console.log(`[ISSUE][${debugId}] Wallet/network precheck`, {
+                signerAddress,
+                chainId: String(network.chainId),
+                balanceWei: balance.toString(),
+                balanceEth: ethers.formatEther(balance),
+                maxFeePerGas: feeData.maxFeePerGas?.toString() || null,
+                maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString() || null,
+                gasPrice: feeData.gasPrice?.toString() || null,
+            });
+
+            if (signerAddress !== String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase()) {
+                console.warn(`[ISSUE][${debugId}] MetaMask selected account differs from logged-in doctor wallet`, {
+                    selectedSigner: signerAddress,
+                    loggedInWallet: String(localStorage.getItem('hc_wallet') || '').trim().toLowerCase(),
+                });
+            }
+
             await assertCredentialRegistryDeployed(provider, getCredentialRegistryAddress());
             const contract = getCredentialRegistryContract(signer);
-            const network = await provider.getNetwork();
 
-            const prepareResponse = await axios.post(
-                'http://localhost:3001/credential/hybrid/prepare',
+            const prepareResponse = await apiClient.post(
+                '/credential/hybrid/prepare',
                 {
                     subjectDid: selectedPatient.did,
                     subjectWallet: selectedPatient.wallet,
@@ -339,33 +322,99 @@ const DoctorDashboard: React.FC = () => {
                         nextDoseDate: vaccineForm.nextDoseDate,
                         notes: vaccineForm.notes,
                     },
-                },
-                { headers }
+                }
             );
 
             const cid = String(prepareResponse.data?.cid || '');
-            const payloadHash = String(prepareResponse.data?.payloadHash || '');
+            let payloadHash = String(prepareResponse.data?.payloadHash || '');
             const patientWallet = String(prepareResponse.data?.patientWallet || selectedPatient.wallet || '').toLowerCase();
             const credentialType = String(prepareResponse.data?.credentialType || 'VaccinationCredential');
+            
             if (!cid || !payloadHash || !patientWallet) {
                 throw new Error('Hybrid preparation did not return cid/payloadHash/patient wallet.');
             }
 
-            const predictedRecordId = await contract.issueRecord.staticCall(patientWallet, cid, payloadHash, credentialType);
-            const tx = await contract.issueRecord(patientWallet, cid, payloadHash, credentialType);
-            const receipt = await tx.wait();
+            // Ensure payloadHash is valid bytes32 (0x + 64 hex chars)
+            payloadHash = payloadHash.trim();
+            if (!payloadHash.startsWith('0x')) {
+                payloadHash = '0x' + payloadHash;
+            }
+            if (!/^0x[a-fA-F0-9]{64}$/.test(payloadHash)) {
+                throw new Error(`Invalid payloadHash format: ${payloadHash}. Expected 0x-prefixed 64 hex characters.`);
+            }
 
-            await axios.post(
-                'http://localhost:3001/credential/hybrid/finalize',
-                {
+            console.log('Transaction parameters:', { patientWallet, cid, payloadHash, credentialType });
+            
+            let tx: any;
+            let receipt: any;
+            let predictedRecordId: any;
+            let estimatedGas: bigint | null = null;
+            
+            try {
+                predictedRecordId = await contract.issueRecord.staticCall(patientWallet, cid, payloadHash, credentialType);
+                console.log('Static call succeeded. Predicted recordId:', predictedRecordId, 'Type:', typeof predictedRecordId);
+
+                const issueSelector = contract.interface.getFunction('issueRecord')?.selector;
+                const populated = await contract.issueRecord.populateTransaction(patientWallet, cid, payloadHash, credentialType);
+                estimatedGas = await contract.issueRecord.estimateGas(patientWallet, cid, payloadHash, credentialType);
+                console.log(`[ISSUE][${debugId}] Prepared transaction details`, {
+                    issueSelector,
+                    to: populated.to,
+                    dataPrefix: String(populated.data || '').slice(0, 18),
+                    dataLength: String(populated.data || '').length,
+                    estimatedGas: estimatedGas.toString(),
+                });
+                
+                tx = await contract.issueRecord(
+                    patientWallet,
+                    cid,
+                    payloadHash,
+                    credentialType,
+                    estimatedGas ? { gasLimit: (estimatedGas * 12n) / 10n } : undefined
+                );
+                console.log('Transaction sent:', tx.hash);
+                receipt = await tx.wait();
+                console.log('Transaction confirmed in block:', receipt?.blockNumber);
+            } catch (txError: any) {
+                console.error(`[ISSUE][${debugId}] Transaction error`, {
+                    message: txError?.message,
+                    shortMessage: txError?.shortMessage,
+                    code: txError?.code,
+                    reason: txError?.reason,
+                    data: txError?.data,
+                    info: txError?.info,
+                    cause: txError?.cause,
+                });
+                const raw = String(txError?.shortMessage || txError?.message || '').toLowerCase();
+                if (raw.includes('unrecognized selector') || raw.includes('missing revert data') || raw.includes('call exception')) {
+                    throw new Error(
+                        'The configured contract address is not a compatible CredentialRegistry on the current network. ' +
+                        'Redeploy CredentialRegistry, update VITE_CREDENTIAL_REGISTRY_ADDRESS, then restart the frontend dev server.'
+                    );
+                }
+                throw new Error(`Transaction failed: ${txError?.message || String(txError)}`);
+            }
+
+            try {
+                const finalizePayload = {
                     cid,
                     txHash: tx.hash,
                     recordId: String(predictedRecordId),
                     chainId: String(network.chainId),
                     contractAddress: getCredentialRegistryAddress(),
-                },
-                { headers }
-            );
+                };
+                console.log('Sending finalize request:', finalizePayload);
+                
+                const finalizeResponse = await apiClient.post(
+                    '/credential/hybrid/finalize',
+                    finalizePayload
+                );
+                console.log('Finalize response:', finalizeResponse.data);
+            } catch (finalizeError: any) {
+                console.error('Finalize error details:', finalizeError?.response?.data || finalizeError?.message);
+                // Finalize error is non-critical; credential is already on-chain
+                console.warn('Finalize failed but credential is on-chain. Backend sync may be delayed.');
+            }
 
             alert(
                 `Credential issued successfully!\n\n` +
@@ -378,9 +427,16 @@ const DoctorDashboard: React.FC = () => {
             );
             setVaccineForm(initialVaccineForm);
             setShowIssueCredentialModal(false);
-            await loadPatientCredentials(selectedPatient);
+            
+            // Reload credentials - don't let this block closing the modal
+            try {
+                await loadPatientCredentials(selectedPatient);
+            } catch (reloadError: any) {
+                console.warn('Failed to reload credentials after issuance:', reloadError?.message);
+            }
         } catch (error: any) {
             const detail = error?.response?.data?.error || error?.message || 'Failed to issue credential';
+            console.error('Credential issuance error:', detail);
             setCredentialError(detail);
         } finally {
             setCredentialLoading(false);
@@ -398,10 +454,56 @@ const DoctorDashboard: React.FC = () => {
         void loadPendingPatients();
     }, []);
 
+    // Set up SSE connection for real-time credential updates
+    useEffect(() => {
+        const token = getStoredToken();
+        if (!token) {
+            console.log('[SSE] No JWT token available for SSE connection');
+            return;
+        }
+
+        try {
+            console.log('[SSE] Connecting to credential events...');
+            const eventSource = new EventSource(`http://localhost:3001/auth/events?token=${encodeURIComponent(token)}`);
+
+            const handleCredentialIssued = () => {
+                console.log('[SSE] Received credential-issued event, reloading credentials...');
+                if (selectedPatient) {
+                    void loadPatientCredentials(selectedPatient);
+                }
+            };
+
+            const handleCredentialFinalized = () => {
+                console.log('[SSE] Received credential-finalized event');
+                if (selectedPatient) {
+                    void loadPatientCredentials(selectedPatient);
+                }
+            };
+
+            eventSource.addEventListener('credential-issued', handleCredentialIssued);
+            eventSource.addEventListener('credential-finalized', handleCredentialFinalized);
+
+            eventSource.addEventListener('error', (error: any) => {
+                console.error('[SSE] Connection error:', error);
+                eventSource.close();
+            });
+
+            return () => {
+                console.log('[SSE] Closing connection');
+                eventSource.removeEventListener('credential-issued', handleCredentialIssued);
+                eventSource.removeEventListener('credential-finalized', handleCredentialFinalized);
+                eventSource.close();
+            };
+        } catch (error) {
+            console.error('[SSE] Failed to set up connection:', error);
+        }
+    }, [selectedPatient]);
+
     const handleLogout = () => {
         localStorage.removeItem('hc_wallet');
         localStorage.removeItem('hc_did');
         localStorage.removeItem('hc_role');
+        localStorage.removeItem('hc_jwt_token');
         window.location.href = '/login';
     };
 
@@ -422,17 +524,15 @@ const DoctorDashboard: React.FC = () => {
         try {
             setSavingProfile(true);
             setProfileError(null);
-            const headers = await buildAuthHeaders();
-            const response = await axios.post(
-                'http://localhost:3001/doctor/profile/me',
+            const response = await apiClient.post(
+                '/doctor/profile/me',
                 {
                     displayName: onboardingForm.displayName,
                     specialty: onboardingForm.specialty,
                     hospitalOrClinic: onboardingForm.hospitalOrClinic,
                     licenseNumber: onboardingForm.licenseNumber,
                     avatarUrl: onboardingForm.avatarUrl,
-                },
-                { headers }
+                }
             );
 
             const saved = response.data?.profile as DoctorProfile;
@@ -464,17 +564,15 @@ const DoctorDashboard: React.FC = () => {
         try {
             setSavingEditProfile(true);
             setProfileError(null);
-            const headers = await buildAuthHeaders();
-            const response = await axios.put(
-                'http://localhost:3001/doctor/profile/me',
+            const response = await apiClient.put(
+                '/doctor/profile/me',
                 {
                     displayName: editProfileForm.displayName,
                     specialty: editProfileForm.specialty,
                     hospitalOrClinic: editProfileForm.hospitalOrClinic,
                     licenseNumber: editProfileForm.licenseNumber,
                     avatarUrl: editProfileForm.avatarUrl,
-                },
-                { headers }
+                }
             );
 
             const updated = response.data?.profile as DoctorProfile;
@@ -706,7 +804,7 @@ const DoctorDashboard: React.FC = () => {
                         </button>
 
                         <div className="doctor-issued-credentials-section">
-                            <h3>Credentials Issued</h3>
+                            
                             {patientCredentialsError ? <div className="credential-error">{patientCredentialsError}</div> : null}
                             {patientCredentialsLoading ? <p>Loading credentials...</p> : null}
                             {!patientCredentialsLoading && selectedPatientCredentials.length === 0 ? (
@@ -714,14 +812,14 @@ const DoctorDashboard: React.FC = () => {
                             ) : null}
 
                             {selectedPatientCredentials.map((entry, index) => {
-                                const subject = parseCredentialSubject(entry.credential);
                                 return (
                                     <article key={`${entry.issuedAt}-${index}`} className="doctor-credential-card">
                                         <h4>{entry.credentialType}</h4>
+                                        <p><strong>Source:</strong> Hybrid (IPFS + Blockchain)</p>
                                         <p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
-                                        <p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
-                                        <p><strong>Dose Number:</strong> {subject?.doseNumber ? String(subject.doseNumber) : 'Not specified'}</p>
-                                        <p><strong>Date Administered:</strong> {subject?.dateAdministered ? String(subject.dateAdministered) : 'Not specified'}</p>
+                                        <p><strong>Record ID:</strong> {entry.recordId || 'Pending'}</p>
+                                        <p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
+                                        <p><strong>Tx Hash:</strong> {entry.txHash || 'Pending confirmation'}</p>
                                     </article>
                                 );
                             })}

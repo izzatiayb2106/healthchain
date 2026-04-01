@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "hardhat run --network localhost blockchain/scripts/deploy-and-update-env.ts"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.8",

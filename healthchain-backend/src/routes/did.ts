@@ -15,7 +15,6 @@ import {
   UserRole,
 } from "../services/authServices";
 import { requireAdmin } from "../middleware/adminAuth";
-import { saveIssuedCredential } from "../services/credentialServices";
 
 export default function didRoutes(agent: any) {
   const router = express.Router();
@@ -194,23 +193,7 @@ export default function didRoutes(agent: any) {
       await setRole(wallet, 'doctor')
       await setDoctorRequestStatus(wallet, 'approved')
 
-      const credential = await agent.createVerifiableCredential({
-        credential: {
-          issuer: { id: caDid },
-          credentialSubject: {
-            id: request.did,
-            wallet: request.wallet,
-            role: 'doctor',
-            licenseUrl: request.licenseUrl,
-          },
-          type: ['VerifiableCredential', 'DoctorCredential'],
-        },
-        proofFormat: 'jwt',
-      })
-
-      await saveIssuedCredential(request.did, 'DoctorCredential', credential)
-
-      res.json({ success: true, wallet: request.wallet, did: request.did, credential })
+      res.json({ success: true, wallet: request.wallet, did: request.did, caDid })
     } catch (error: any) {
       console.error(error)
       res.status(500).json({ error: error?.message || 'Failed to approve doctor request' })

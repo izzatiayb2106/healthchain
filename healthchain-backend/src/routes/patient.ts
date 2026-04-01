@@ -1,40 +1,11 @@
 import express from "express";
 import { ethers } from "ethers";
 import { getIdentityByDid, getIdentityByWallet } from "../services/authServices";
-import { listIssuedCredentialsBySubject } from "../services/credentialServices";
 import { getPatientProfileByDid, upsertPatientProfile } from "../services/patientProfileService";
 import { getDoctorProfileByDid } from "../services/doctorProfileService";
 import { addPendingPatient } from "../services/doctorPendingPatientsService";
-
-function parseJwtPayload(tokenLike: string): any {
-  const token = String(tokenLike || "").trim();
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
-    return JSON.parse(payload);
-  } catch {
-    return null;
-  }
-}
-
-function extractIssuerDid(credential: any): string {
-  if (!credential) return "";
-
-  if (typeof credential === "string") {
-    const jwtPayload = parseJwtPayload(credential);
-    const vc = jwtPayload?.vc || {};
-    const issuer = vc?.issuer || jwtPayload?.iss || "";
-    return typeof issuer === "string" ? issuer : String(issuer?.id || "");
-  }
-
-  if (typeof credential === "object") {
-    const issuer = credential?.issuer || credential?.vc?.issuer || credential?.proof?.issuer || "";
-    return typeof issuer === "string" ? issuer : String(issuer?.id || "");
-  }
-
-  return "";
-}
+import { listHybridCredentialsBySubjectDid } from "../services/hybridCredentialService";
+import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 
 function getWalletAuth(req: express.Request) {
   const wallet = String(req.header("x-user-wallet") || "").trim().toLowerCase();
@@ -43,18 +14,13 @@ function getWalletAuth(req: express.Request) {
   return { wallet, signature, message };
 }
 
-async function resolvePatientIdentity(req: express.Request) {
-  const { wallet, signature, message } = getWalletAuth(req);
-  if (!wallet || !signature || !message) {
-    throw new Error("Missing user authentication headers");
+async function resolvePatientIdentityByJWT(req: express.Request) {
+  const jwtUser = (req as any).user;
+  if (!jwtUser || !jwtUser.wallet) {
+    throw new Error("Not authenticated or missing wallet in JWT");
   }
 
-  const recovered = ethers.verifyMessage(message, signature).toLowerCase();
-  if (recovered !== wallet) {
-    throw new Error("Invalid user signature");
-  }
-
-  const identity = await getIdentityByWallet(wallet);
+  const identity = await getIdentityByWallet(jwtUser.wallet);
   if (!identity || identity.role !== "patient") {
     throw new Error("Patient role required");
   }
@@ -64,10 +30,11 @@ async function resolvePatientIdentity(req: express.Request) {
 
 export default function patientRoutes() {
   const router = express.Router();
+  router.use(jwtAuthMiddleware);
 
   router.get("/profile/me", async (req, res) => {
     try {
-      const identity = await resolvePatientIdentity(req);
+      const identity = await resolvePatientIdentityByJWT(req);
       const profile = await getPatientProfileByDid(identity.did);
       if (!profile) {
         return res.status(404).json({
@@ -94,7 +61,7 @@ export default function patientRoutes() {
 
   router.post("/profile/me", async (req, res) => {
     try {
-      const identity = await resolvePatientIdentity(req);
+      const identity = await resolvePatientIdentityByJWT(req);
       const fullName = String(req.body.fullName || "").trim();
       const dateOfBirth = String(req.body.dateOfBirth || "").trim();
       const bloodType = String(req.body.bloodType || "").trim();
@@ -133,7 +100,7 @@ export default function patientRoutes() {
 
   router.put("/profile/me", async (req, res) => {
     try {
-      const identity = await resolvePatientIdentity(req);
+      const identity = await resolvePatientIdentityByJWT(req);
       const current = await getPatientProfileByDid(identity.did);
       if (!current) {
         return res.status(404).json({ error: "Patient profile not found. Complete onboarding first." });
@@ -166,7 +133,7 @@ export default function patientRoutes() {
 
   router.post("/profile/me/encryption-key", async (req, res) => {
     try {
-      const identity = await resolvePatientIdentity(req);
+      const identity = await resolvePatientIdentityByJWT(req);
       const encryptionPublicKey = String(req.body.encryptionPublicKey || "").trim();
       if (!encryptionPublicKey) {
         return res.status(400).json({ error: "encryptionPublicKey is required" });
@@ -194,14 +161,13 @@ export default function patientRoutes() {
 
   router.get("/credentials/me", async (req, res) => {
     try {
-      const identity = await resolvePatientIdentity(req);
-      const issued = await listIssuedCredentialsBySubject(identity.did);
+      const identity = await resolvePatientIdentityByJWT(req);
+      const hybrid = await listHybridCredentialsBySubjectDid(identity.did);
 
       const mapped = await Promise.all(
-        issued
-          .filter((entry) => entry.credentialType !== "PatientCredential")
+        hybrid
           .map(async (entry) => {
-            const issuerDid = extractIssuerDid(entry.credential);
+            const issuerDid = String(entry.issuerDid || "").trim();
             const issuerIdentity = issuerDid ? await getIdentityByDid(issuerDid) : null;
             const issuerProfile = issuerDid ? await getDoctorProfileByDid(issuerDid) : null;
             const issuerName = String(
@@ -214,7 +180,14 @@ export default function patientRoutes() {
               issuerName,
               issuerRole: issuerIdentity?.role || "unknown",
               issuedByDoctor: issuerIdentity?.role === "doctor",
-              credential: entry.credential,
+              credential: null,
+              mode: "hybrid",
+              cid: entry.cid,
+              payloadHash: entry.payloadHash,
+              recordId: entry.recordId || null,
+              txHash: entry.txHash || null,
+              chainId: entry.chainId || null,
+              contractAddress: entry.contractAddress || null,
             };
           })
       );
@@ -241,7 +214,7 @@ export default function patientRoutes() {
   // Patient-initiated: register themselves with a doctor
   router.post("/register-with-doctor", async (req, res) => {
     try {
-      const patientIdentity = await resolvePatientIdentity(req);
+      const patientIdentity = await resolvePatientIdentityByJWT(req);
 
       const doctorWallet = String(req.body.doctorWallet || "").trim().toLowerCase();
       if (!doctorWallet) {
