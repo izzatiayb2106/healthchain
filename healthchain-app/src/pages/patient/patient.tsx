@@ -60,6 +60,16 @@ type HybridDecryptedView = {
 	cid: string;
 };
 
+type DecodedVcJwt = {
+	issuer?: string;
+	issuanceDate?: string;
+	exp?: number;
+	vc?: {
+		type?: string[];
+		credentialSubject?: Record<string, unknown>;
+	};
+};
+
 const emptyProfileForm = {
 	fullName: '',
 	dateOfBirth: '',
@@ -596,6 +606,17 @@ const PatientDashboard: React.FC = () => {
 		}
 	};
 
+	const decodeVcJwt = (jwt: string): DecodedVcJwt | null => {
+		try {
+			const parts = String(jwt || '').split('.');
+			if (parts.length < 2) return null;
+			const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+			return payload as DecodedVcJwt;
+		} catch {
+			return null;
+		}
+	};
+
 	const openCredentialQr = async (entry: DoctorIssuedCredential) => {
 		try {
 			setQrError(null);
@@ -641,6 +662,12 @@ const PatientDashboard: React.FC = () => {
 				`${String(entry.cid || '').trim()}|${String(entry.payloadHash || '').trim().toLowerCase()}`
 			)
 	);
+
+	const decodedHybrid = hybridDecrypted ? decodeVcJwt(hybridDecrypted.vcJwt) : null;
+	const decodedSubject = decodedHybrid?.vc?.credentialSubject || null;
+	const decodedTypes = Array.isArray(decodedHybrid?.vc?.type)
+		? decodedHybrid?.vc?.type?.filter((item) => item !== 'VerifiableCredential')
+		: [];
 
 	const registerWithDoctor = async (event: React.FormEvent) => {
 		event.preventDefault();
@@ -905,10 +932,36 @@ const PatientDashboard: React.FC = () => {
 
 				{hybridDecrypted ? (
 					<div className="patient-card" style={{ marginTop: '12px' }}>
-						<h3>Decrypted Credential JWT</h3>
-						<p><strong>CID:</strong> {hybridDecrypted.cid}</p>
-						<p><strong>Payload Hash:</strong> {hybridDecrypted.payloadHash}</p>
-						<textarea readOnly value={hybridDecrypted.vcJwt} style={{ width: '100%', minHeight: '120px' }} />
+						<div className="credential-details-header">
+							<h3>Credential Details</h3>
+							<button
+								type="button"
+								className="btn-close-details"
+								onClick={() => setHybridDecrypted(null)}
+								title="Close credential details"
+							>
+								✕
+							</button>
+						</div>
+						<p><strong>Type:</strong> {decodedTypes && decodedTypes.length ? decodedTypes.join(', ') : 'N/A'}</p>
+						<p><strong>Issuer DID:</strong> {decodedHybrid?.issuer || 'N/A'}</p>
+						<p><strong>Issued At:</strong> {decodedHybrid?.issuanceDate ? new Date(decodedHybrid.issuanceDate).toLocaleString() : 'N/A'}</p>
+						<p><strong>Expires:</strong> {decodedHybrid?.exp ? new Date(decodedHybrid.exp * 1000).toLocaleString() : 'N/A'}</p>
+
+						{decodedSubject ? (
+							<div className="decrypted-details">
+								<h4>Credential Subject</h4>
+								<div className="decrypted-subject-grid">
+								{Object.entries(decodedSubject).map(([key, value]) => (
+									<p key={key} className="decrypted-subject-item">
+										<strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+									</p>
+								))}
+								</div>
+							</div>
+						) : null}
+
+						
 					</div>
 				) : null}
 			</section>

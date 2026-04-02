@@ -25,6 +25,12 @@ async function main() {
   console.log("📝 Updating backend .env:", backendEnvPath);
   updateEnvFile(backendEnvPath, "CREDENTIAL_REGISTRY_ADDRESS", address);
 
+  assertEnvValue(frontendEnvPath, "VITE_CREDENTIAL_REGISTRY_ADDRESS", address);
+  assertEnvValue(backendEnvPath, "CREDENTIAL_REGISTRY_ADDRESS", address);
+
+  // Fail fast if deployed address is not compatible with expected selector set.
+  await assertCompatibleContract(address);
+
   console.log("\n✨ Deployment complete!");
   console.log("📌 Contract Address:", address);
   console.log("✅ Both .env files updated automatically!\n");
@@ -32,8 +38,7 @@ async function main() {
 
 function updateEnvFile(filePath: string, key: string, value: string) {
   if (!fs.existsSync(filePath)) {
-    console.warn(`⚠️  File not found: ${filePath}`);
-    return;
+    throw new Error(`Env file not found: ${filePath}`);
   }
 
   let content = fs.readFileSync(filePath, "utf-8");
@@ -48,6 +53,44 @@ function updateEnvFile(filePath: string, key: string, value: string) {
   }
 
   fs.writeFileSync(filePath, content, "utf-8");
+}
+
+function assertEnvValue(filePath: string, key: string, expected: string) {
+  const content = fs.readFileSync(filePath, "utf-8");
+  const match = content.match(new RegExp(`^${key}=(.*)$`, "m"));
+  const actual = String(match?.[1] || "").trim().toLowerCase();
+  const normalizedExpected = String(expected).trim().toLowerCase();
+  if (actual !== normalizedExpected) {
+    throw new Error(
+      `Failed to verify ${key} in ${filePath}. Expected ${normalizedExpected}, got ${actual || "<empty>"}.`
+    );
+  }
+}
+
+async function assertCompatibleContract(address: string) {
+  const { ethers } = await network.connect();
+  const provider = ethers.provider;
+  const probeContract = new ethers.Contract(
+    address,
+    ["function getPatientRecordCount(address patient) view returns (uint256)"],
+    provider
+  );
+
+  try {
+    await probeContract.getPatientRecordCount(ethers.ZeroAddress);
+  } catch (error: any) {
+    const message = String(error?.shortMessage || error?.message || "").toLowerCase();
+    if (
+      message.includes("unrecognized selector") ||
+      message.includes("missing revert data") ||
+      message.includes("call exception")
+    ) {
+      throw new Error(
+        `Post-deploy probe failed: contract at ${address} is not compatible with CredentialRegistry ABI.`
+      );
+    }
+    throw error;
+  }
 }
 
 main().catch((error) => {

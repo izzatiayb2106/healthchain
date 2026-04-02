@@ -815,7 +815,6 @@ const DoctorDashboard: React.FC = () => {
                                 return (
                                     <article key={`${entry.issuedAt}-${index}`} className="doctor-credential-card">
                                         <h4>{entry.credentialType}</h4>
-                                        <p><strong>Source:</strong> Hybrid (IPFS + Blockchain)</p>
                                         <p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
                                         <p><strong>Record ID:</strong> {entry.recordId || 'Pending'}</p>
                                         <p><strong>CID:</strong> {entry.cid || 'Not available'}</p>

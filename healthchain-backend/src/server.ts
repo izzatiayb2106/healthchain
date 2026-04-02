@@ -7,10 +7,13 @@ import didRoutes from "./routes/did"
 import credentialRoutes from "./routes/credential"
 import doctorRoutes from "./routes/doctor"
 import patientRoutes from "./routes/patient"
+import { runContractPreflight } from './utils/contractPreflight'
 
 dotenv.config()
 
 async function startServer(){
+  await runContractPreflight()
+
   const app = express()
   
   // Enable CORS for frontend

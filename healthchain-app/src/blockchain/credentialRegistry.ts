@@ -1,13 +1,7 @@
 import { ethers } from 'ethers';
+import { CredentialRegistry__factory } from '../../types/ethers-contracts/factories/CredentialRegistry__factory';
 
-export const CREDENTIAL_REGISTRY_ABI = [
-  'function issueRecord(address patient, string cid, bytes32 payloadHash, string credentialType) returns (uint256)',
-  'function getPatientRecordCount(address patient) view returns (uint256)',
-  'function getPatientRecordAt(address patient, uint256 index) view returns (uint256 recordId, address issuer, address subject, string cid, bytes32 payloadHash, string credentialType, uint256 issuedAt)',
-  'function getRecordById(uint256 recordId) view returns (address issuer, address patient, string cid, bytes32 payloadHash, string credentialType, uint256 issuedAt)',
-  'function verifyRecord(uint256 recordId, string cid, bytes32 payloadHash) view returns (bool)',
-  'event RecordIssued(uint256 indexed recordId, address indexed issuer, address indexed patient, string cid, bytes32 payloadHash, string credentialType, uint256 issuedAt)',
-] as const;
+export const CREDENTIAL_REGISTRY_ABI = CredentialRegistry__factory.abi;
 
 export type HybridChainRecord = {
   recordId: string;
