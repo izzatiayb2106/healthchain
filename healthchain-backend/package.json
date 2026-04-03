@@ -6,7 +6,6 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node src/server.ts",
-    "migrate:legacy-hybrid": "ts-node src/scripts/migrateLegacyCredentialsToHybrid.ts",
     "reset:local-state": "ts-node src/scripts/resetLocalState.ts",
     "fund:wallets": "ts-node src/scripts/autofundWallets.ts",
     "dev:clean": "npm run reset:local-state",

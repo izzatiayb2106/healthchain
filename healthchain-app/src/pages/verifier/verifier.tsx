@@ -2,23 +2,23 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { Html5Qrcode } from 'html5-qrcode';
 import { apiClient } from '../../services/authService';
-import { assertCredentialRegistryDeployed, getCredentialRegistryContract } from '../../blockchain/credentialRegistry';
 import './verifier.css';
-
-type VerifiedCredential = {
-	verifiedBy: string;
-	subjectDid: string;
-	issuedAt: string;
-	credentialType: string;
-	credential: any;
-};
 
 type HybridVerifyResult = {
 	valid: boolean;
+	statusText: string;
 	recordId: string;
 	cid: string;
 	payloadHash: string;
 	contractAddress: string;
+};
+
+type HybridQrPayload = {
+	type: 'healthchain-hybrid-record';
+	contractAddress: string;
+	recordId: string;
+	cid: string;
+	payloadHash: string;
 };
 
 const VerifierDashboard: React.FC = () => {
@@ -28,21 +28,48 @@ const VerifierDashboard: React.FC = () => {
 	const [tokenOrPayload, setTokenOrPayload] = useState('');
 	const [verifying, setVerifying] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [result, setResult] = useState<VerifiedCredential | null>(null);
 	const [hybridResult, setHybridResult] = useState<HybridVerifyResult | null>(null);
 	const [scanError, setScanError] = useState<string | null>(null);
 	const [isScanning, setIsScanning] = useState(false);
 
-	const parseCredentialSubject = (credential: any) => {
+	const parseHybridPayload = (rawValue: string): HybridQrPayload => {
+		let parsed: any;
 		try {
-			if (typeof credential === 'string') {
-				const payload = JSON.parse(atob(credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-				return payload?.vc?.credentialSubject || null;
-			}
-			return credential?.credentialSubject || credential?.vc?.credentialSubject || null;
+			parsed = JSON.parse(rawValue);
 		} catch {
-			return null;
+			throw new Error('Invalid hybrid QR payload JSON.');
 		}
+
+		if (parsed?.type !== 'healthchain-hybrid-record') {
+			throw new Error('Unsupported QR payload type. Use a hybrid record payload from patient dashboard.');
+		}
+
+		const contractAddress = String(parsed.contractAddress || '').trim();
+		const recordId = String(parsed.recordId || '').trim();
+		const cid = String(parsed.cid || '').trim();
+		const payloadHash = String(parsed.payloadHash || '').trim();
+
+		if (!contractAddress || !recordId || !cid || !payloadHash) {
+			throw new Error('Hybrid payload is missing required fields: contractAddress, recordId, cid, payloadHash.');
+		}
+
+		if (!/^0x[a-fA-F0-9]{64}$/.test(payloadHash)) {
+			throw new Error('Invalid payloadHash format. Expected 0x-prefixed 64 hex characters.');
+		}
+
+		try {
+			void BigInt(recordId);
+		} catch {
+			throw new Error('Invalid recordId. It must be a numeric string.');
+		}
+
+		return {
+			type: 'healthchain-hybrid-record',
+			contractAddress,
+			recordId,
+			cid,
+			payloadHash,
+		};
 	};
  
 	const handleLogout = () => {
@@ -57,74 +84,63 @@ const VerifierDashboard: React.FC = () => {
 
 		const value = rawValue.trim();
 		if (!value) {
-			setError('Please paste scanned QR payload/token.');
+			setError('Please paste a hybrid QR payload.');
 			return;
 		}
 
 		try {
 			setVerifying(true);
 			setError(null);
-			setResult(null);
 			setHybridResult(null);
 
-			try {
-				const parsed = JSON.parse(value);
-				if (parsed?.type === 'healthchain-hybrid-record') {
-					if (!(window as any).ethereum) {
-						throw new Error('MetaMask is required for on-chain verification.');
-					}
-
-					const provider = new ethers.BrowserProvider((window as any).ethereum);
-					const hybridContractAddress = String(parsed.contractAddress || '').trim();
-					await assertCredentialRegistryDeployed(provider, hybridContractAddress);
-					const contract: any = getCredentialRegistryContract(provider, hybridContractAddress);
-					const valid = await contract.verifyRecord(
-						BigInt(String(parsed.recordId || '0')),
-						String(parsed.cid || ''),
-						String(parsed.payloadHash || '')
-					);
-
-					setHybridResult({
-						valid: Boolean(valid),
-						recordId: String(parsed.recordId || ''),
-						cid: String(parsed.cid || ''),
-						payloadHash: String(parsed.payloadHash || ''),
-						contractAddress: String(parsed.contractAddress || ''),
-					});
-					return;
-				}
-			} catch {
-				// Not a hybrid JSON payload, continue with session-token verification.
+			const parsed = parseHybridPayload(value);
+			if (!(window as any).ethereum) {
+				throw new Error('MetaMask is required to approve verification.');
 			}
 
-			const response = await apiClient.post(
-				'/credential/qr/verify',
-				{ tokenOrPayload: value }
-			);
+			const provider = new ethers.BrowserProvider((window as any).ethereum);
+			await provider.send('eth_requestAccounts', []);
+			const signer = await provider.getSigner();
+			const address = String(await signer.getAddress()).toLowerCase();
 
-			if (String(response.data?.mode || '') === 'hybrid') {
-				setHybridResult({
-					valid: Boolean(response.data?.credentialVerified),
-					recordId: String(response.data?.recordId || ''),
-					cid: String(response.data?.cid || ''),
-					payloadHash: String(response.data?.payloadHash || ''),
-					contractAddress: String(response.data?.contractAddress || ''),
-				});
-				return;
-			}
+			const message = [
+				'HealthChain Verifier Approval',
+				`Action: verify hybrid credential`,
+				`Contract: ${parsed.contractAddress}`,
+				`Record ID: ${parsed.recordId}`,
+				`CID: ${parsed.cid}`,
+				`Payload Hash: ${parsed.payloadHash}`,
+				`Timestamp: ${new Date().toISOString()}`,
+			].join('\n');
 
-			setResult(response.data as VerifiedCredential);
+			const signature = await signer.signMessage(message);
+
+			const response = await apiClient.post('/credential/hybrid/verify', {
+				address,
+				message,
+				signature,
+				payload: parsed,
+			});
+
+			const valid = Boolean(response.data?.valid);
+			const statusText = String(response.data?.statusText || (valid ? 'Verified Valid' : 'Verification Failed'));
+
+			setHybridResult({
+				valid,
+				statusText,
+				recordId: String(response.data?.recordId || parsed.recordId),
+				cid: String(response.data?.cid || parsed.cid),
+				payloadHash: String(response.data?.payloadHash || parsed.payloadHash),
+				contractAddress: String(response.data?.contractAddress || parsed.contractAddress),
+			});
 		} catch (err: any) {
 			const detail =
 				err?.response?.data?.error ||
-				(err?.code === 'BAD_DATA'
-					? 'Unable to read CredentialRegistry. Contract address or selected network is incorrect.'
+				(err?.code === 4001
+					? 'Verification approval was rejected in MetaMask.'
 					: err?.message) ||
-				'Failed to verify credential QR';
+				'Failed to verify hybrid credential payload';
 			setError(detail);
-			if (detail.toLowerCase().includes('token is invalid') || detail.toLowerCase().includes('invalid or expired')) {
-				window.alert('Token invalid or expired. Please generate a new QR from the latest patient credential card.');
-			}
 		} finally {
 			setVerifying(false);
 		}
@@ -205,8 +221,6 @@ const VerifierDashboard: React.FC = () => {
 		};
 	}, []);
 
-	const subject = parseCredentialSubject(result?.credential);
-
 	return (
 		<div className="verifier-dashboard">
 			<header className="verifier-header">
@@ -216,10 +230,10 @@ const VerifierDashboard: React.FC = () => {
 
 			<section className="verifier-panel">
 				<h2>Verify Credential QR</h2>
-				<p>Scan using camera or paste QR text. Supports both session-token QR and hybrid on-chain QR payloads.</p>
+				<p>Scan or paste hybrid QR payload. Verification requires verifier role and MetaMask signature approval.</p>
 				<div className="scanner-actions">
 					<button className="btn approve" type="button" onClick={() => void startScanner()} disabled={isScanning || verifying}>
-						{isScanning ? 'Scanner Running...' : 'Start Camera Scan'}
+						{isScanning ? 'Scanner Running...' : 'Scan'}
 					</button>
 					<button className="btn logout" type="button" onClick={() => void stopScanner()} disabled={!isScanning}>
 						Stop Scan
@@ -231,7 +245,7 @@ const VerifierDashboard: React.FC = () => {
 					<textarea
 						value={tokenOrPayload}
 						onChange={(event) => setTokenOrPayload(event.target.value)}
-						placeholder='Paste payload e.g. {"type":"healthchain-credential-qr","token":"..."} or {"type":"healthchain-hybrid-record",...}'
+						placeholder='Paste payload e.g. {"type":"healthchain-hybrid-record","contractAddress":"0x...","recordId":"1","cid":"...","payloadHash":"0x..."}'
 						disabled={verifying}
 					/>
 					<button className="btn approve" type="submit" disabled={verifying}>
@@ -246,7 +260,7 @@ const VerifierDashboard: React.FC = () => {
 					<article className={`claim-card ${hybridResult.valid ? 'approved' : ''}`}>
 						<div className="claim-main claim-main-column">
 							<h3 className="patient-name">Hybrid On-Chain Validation</h3>
-							<div><strong>Status:</strong> {hybridResult.valid ? 'Verified Valid' : 'Verification Failed'}</div>
+							<div><strong>Status:</strong> {hybridResult.statusText}</div>
 							<div><strong>Record ID:</strong> {hybridResult.recordId}</div>
 							<div><strong>CID:</strong> {hybridResult.cid}</div>
 							<div><strong>Hash:</strong> {hybridResult.payloadHash}</div>
@@ -254,25 +268,6 @@ const VerifierDashboard: React.FC = () => {
 						</div>
 						<div className="claim-actions">
 							<span className="badge">{hybridResult.valid ? 'Verified' : 'Failed'}</span>
-						</div>
-					</article>
-				</section>
-			) : null}
-
-			{result ? (
-				<section className="claim-list">
-					<article className="claim-card approved">
-						<div className="claim-main claim-main-column">
-							<h3 className="patient-name">Credential Verified</h3>
-							<div><strong>Credential Type:</strong> {result.credentialType}</div>
-							<div><strong>Subject DID:</strong> {result.subjectDid}</div>
-							<div><strong>Issued:</strong> {new Date(result.issuedAt).toLocaleString()}</div>
-							{subject?.name ? <div><strong>Patient Name:</strong> {String(subject.name)}</div> : null}
-							{subject?.vaccineType ? <div><strong>Vaccine Type:</strong> {String(subject.vaccineType)}</div> : null}
-							{subject?.doseNumber ? <div><strong>Dose Number:</strong> {String(subject.doseNumber)}</div> : null}
-						</div>
-						<div className="claim-actions">
-							<span className="badge">Verified</span>
 						</div>
 					</article>
 				</section>

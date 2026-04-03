@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { encrypt } from "@metamask/eth-sig-util";
 import { getIdentityByDid, getIdentityByWallet, upsertIdentity } from "../services/authServices";
 import { ensureDidForWallet } from "../services/didService";
-import { createCredentialQrSession, getCredentialQrSession } from "../services/credentialQrService";
+import { createCredentialQrSession } from "../services/credentialQrService";
 import { getPatientProfileByDid } from "../services/patientProfileService";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 import {
@@ -43,20 +43,40 @@ export default function credentialRoutes(agent: any) {
     return `0x${Buffer.from(JSON.stringify(encrypted), "utf8").toString("hex")}`;
   };
 
-  const resolveQrToken = (tokenOrPayload: string) => {
-    const raw = String(tokenOrPayload || "").trim();
-    if (!raw) return "";
-
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object" && typeof parsed.token === "string") {
-        return parsed.token.trim();
-      }
-    } catch {
-      // Not JSON, treat as direct token.
+  const parseHybridVerifyPayload = (input: unknown) => {
+    if (!input || typeof input !== "object") {
+      throw new Error("payload is required");
     }
 
-    return raw;
+    const parsed = input as Record<string, unknown>;
+    const type = String(parsed.type || "").trim();
+    const contractAddress = String(parsed.contractAddress || "").trim();
+    const recordId = String(parsed.recordId || "").trim();
+    const cid = String(parsed.cid || "").trim();
+    const payloadHash = String(parsed.payloadHash || "").trim();
+
+    if (type !== "healthchain-hybrid-record") {
+      throw new Error("Unsupported payload type");
+    }
+    if (!contractAddress || !recordId || !cid || !payloadHash) {
+      throw new Error("Hybrid payload is missing required fields");
+    }
+    if (!/^0x[a-fA-F0-9]{64}$/.test(payloadHash)) {
+      throw new Error("Invalid payloadHash format");
+    }
+
+    try {
+      void BigInt(recordId);
+    } catch {
+      throw new Error("Invalid recordId");
+    }
+
+    return {
+      contractAddress,
+      recordId,
+      cid,
+      payloadHash,
+    };
   };
 
   router.post("/issue", async (_req, res) => {
@@ -454,80 +474,93 @@ export default function credentialRoutes(agent: any) {
     }
   });
 
-  const verifyQrHandler: express.RequestHandler = async (req, res) => {
+  router.post("/hybrid/verify", async (req, res) => {
     try {
-      const identity = await resolveIdentityByJWT(req);
-      if (identity.role !== "verifier") {
+      const verifierIdentity = await resolveIdentityByJWT(req);
+      if (verifierIdentity.role !== "verifier") {
         return res.status(403).json({ error: "Verifier role required" });
       }
 
-      const token = resolveQrToken(String(req.body.tokenOrPayload || req.body.token || ""));
-      if (!token) {
-        return res.status(400).json({ error: "tokenOrPayload is required" });
+      const address = String(req.body.address || "").trim().toLowerCase();
+      const message = String(req.body.message || "").trim();
+      const signature = String(req.body.signature || "").trim();
+
+      if (!address || !message || !signature) {
+        return res.status(400).json({ error: "address, message and signature are required" });
       }
 
-      const session = await getCredentialQrSession(token);
-      if (!session) {
-        return res.status(404).json({
-          error: "QR token is invalid or expired",
-          serverNowUtc: new Date().toISOString(),
-          serverNowEpochMs: Date.now(),
-          hint: "Generate a new QR payload from the patient credential card and verify it within the active TTL window.",
-        });
+      if (address !== verifierIdentity.wallet.toLowerCase()) {
+        return res.status(403).json({ error: "Signer wallet does not match authenticated verifier wallet" });
       }
 
-      if (!session.recordId || !session.cid || !session.payloadHash || !session.contractAddress) {
-        return res.status(409).json({ error: "QR session does not contain hybrid verification metadata" });
+      const recovered = ethers.verifyMessage(message, signature).toLowerCase();
+      if (recovered !== address) {
+        return res.status(401).json({ error: "Invalid verifier signature" });
       }
+
+      const payload = parseHybridVerifyPayload(req.body.payload);
 
       const rpcUrl = String(process.env.RPC_URL || "http://127.0.0.1:8545").trim();
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       const contract = new ethers.Contract(
-        session.contractAddress,
+        payload.contractAddress,
         ["function verifyRecord(uint256 recordId, string cid, bytes32 payloadHash) view returns (bool)"],
         provider
       );
 
-      const onChainValid = await contract.verifyRecord(
-        BigInt(session.recordId),
-        session.cid,
-        session.payloadHash
+      const valid = Boolean(
+        await contract.verifyRecord(
+          BigInt(payload.recordId),
+          payload.cid,
+          payload.payloadHash
+        )
       );
-
-      if (!Boolean(onChainValid)) {
-        return res.status(400).json({ error: "On-chain record verification failed" });
-      }
 
       return res.json({
         success: true,
         mode: "hybrid",
-        verifiedBy: identity.did,
-        credentialVerified: Boolean(onChainValid),
-        verifiedAtUtc: new Date().toISOString(),
-        subjectDid: session.subjectDid,
-        issuedAt: session.issuedAt,
-        credentialType: session.credentialType,
-        recordId: session.recordId,
-        cid: session.cid,
-        payloadHash: session.payloadHash,
-        contractAddress: session.contractAddress,
-        chainId: session.chainId || null,
+        valid,
+        statusText: valid ? "Verified Valid" : "Verification Failed",
+        verifiedBy: verifierIdentity.did,
+        contractAddress: payload.contractAddress,
+        recordId: payload.recordId,
+        cid: payload.cid,
+        payloadHash: payload.payloadHash,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      const message = (error as any)?.message || "Failed to verify credential QR";
-      if (message === "Missing user authentication headers" || message === "Invalid user signature") {
+      const message = String(error?.message || "Failed to verify hybrid credential");
+      if (message === "Not authenticated. Use JWT token in Authorization header.") {
         return res.status(401).json({ error: message });
       }
       if (message === "Identity not found for wallet") {
         return res.status(404).json({ error: message });
       }
-      return res.status(500).json({ error: "Failed to verify credential QR" });
+      if (
+        message === "Unsupported payload type" ||
+        message === "Hybrid payload is missing required fields" ||
+        message === "Invalid payloadHash format" ||
+        message === "Invalid recordId"
+      ) {
+        return res.status(400).json({ error: message });
+      }
+      return res.status(500).json({ error: "Failed to verify hybrid credential" });
     }
-  };
+  });
 
-  router.post("/qr/verify", verifyQrHandler);
-  router.post("/qr/redeem", verifyQrHandler);
+  router.post("/qr/verify", (_req, res) => {
+    return res.status(410).json({
+      error: "Legacy QR-session verification endpoint removed",
+      hint: "Use hybrid payload verification in verifier dashboard with type=healthchain-hybrid-record",
+    });
+  });
+
+  router.post("/qr/redeem", (_req, res) => {
+    return res.status(410).json({
+      error: "Legacy QR-session verification endpoint removed",
+      hint: "Use hybrid payload verification in verifier dashboard with type=healthchain-hybrid-record",
+    });
+  });
 
   return router;
 }

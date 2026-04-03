@@ -115,6 +115,7 @@ const PatientDashboard: React.FC = () => {
 	const [selectedHybridRecordId, setSelectedHybridRecordId] = useState<string | null>(null);
 	const [hybridDecrypted, setHybridDecrypted] = useState<HybridDecryptedView | null>(null);
 	const [hybridQrPayload, setHybridQrPayload] = useState<string | null>(null);
+	const [hybridPayloadCopyStatus, setHybridPayloadCopyStatus] = useState<string | null>(null);
 	const encryptionKeyRegistrationTriedRef = useRef(false);
 
 
@@ -399,6 +400,7 @@ const PatientDashboard: React.FC = () => {
 			return;
 		}
 
+		setHybridPayloadCopyStatus(null);
 		setHybridQrPayload(JSON.stringify({
 			type: 'healthchain-hybrid-record',
 			contractAddress,
@@ -406,6 +408,16 @@ const PatientDashboard: React.FC = () => {
 			cid: record.cid,
 			payloadHash: record.payloadHash,
 		}));
+	};
+
+	const copyHybridPayload = async () => {
+		if (!hybridQrPayload) return;
+		try {
+			await navigator.clipboard.writeText(hybridQrPayload);
+			setHybridPayloadCopyStatus('Payload copied. Paste it into verifier dashboard.');
+		} catch {
+			setHybridPayloadCopyStatus('Copy failed. Select and copy the payload text manually.');
+		}
 	};
 
 	useEffect(() => {
@@ -986,14 +998,41 @@ const PatientDashboard: React.FC = () => {
 			) : null}
 
 			{hybridQrPayload ? (
-				<div className="modal-overlay" onClick={() => setHybridQrPayload(null)}>
+				<div
+					className="modal-overlay"
+					onClick={() => {
+						setHybridQrPayload(null);
+						setHybridPayloadCopyStatus(null);
+					}}
+				>
 					<div className="credential-qr-modal" onClick={(event) => event.stopPropagation()}>
 						<h2>Hybrid Verification QR</h2>
 						<div className="credential-qr-code-wrap">
 							<QRCodeSVG value={hybridQrPayload} size={220} includeMargin />
 						</div>
+						<p><strong>Copyable Payload (testing):</strong></p>
+						<textarea
+							className="hybrid-payload-textarea"
+							value={hybridQrPayload}
+							readOnly
+						/>
+						<div className="scanner-actions" style={{ marginBottom: '8px' }}>
+							<button type="button" className="btn request" onClick={() => void copyHybridPayload()}>
+								Copy Payload
+							</button>
+						</div>
+						{hybridPayloadCopyStatus ? <p className="credential-qr-note">{hybridPayloadCopyStatus}</p> : null}
 						<p className="credential-qr-note">This QR includes contract address, record ID, CID, and hash for on-chain integrity validation.</p>
-						<button type="button" className="btn request" onClick={() => setHybridQrPayload(null)}>Close</button>
+						<button
+							type="button"
+							className="btn request"
+							onClick={() => {
+								setHybridQrPayload(null);
+								setHybridPayloadCopyStatus(null);
+							}}
+						>
+							Close
+						</button>
 					</div>
 				</div>
 			) : null}
