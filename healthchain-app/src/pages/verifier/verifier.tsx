@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { Html5Qrcode } from 'html5-qrcode';
-import { apiClient } from '../../services/authService';
+import { apiClient, logoutWithAudit } from '../../services/authService';
 import './verifier.css';
 
 type HybridVerifyResult = {
@@ -21,6 +21,11 @@ type HybridQrPayload = {
 	payloadHash: string;
 };
 
+type VerifierProfile = {
+	fullName: string;
+	professionalId: string;
+};
+
 const VerifierDashboard: React.FC = () => {
 	const readerElementId = 'verifier-qr-reader';
 	const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -31,6 +36,7 @@ const VerifierDashboard: React.FC = () => {
 	const [hybridResult, setHybridResult] = useState<HybridVerifyResult | null>(null);
 	const [scanError, setScanError] = useState<string | null>(null);
 	const [isScanning, setIsScanning] = useState(false);
+	const [verifierProfile, setVerifierProfile] = useState<VerifierProfile | null>(null);
 
 	const parseHybridPayload = (rawValue: string): HybridQrPayload => {
 		let parsed: any;
@@ -72,10 +78,8 @@ const VerifierDashboard: React.FC = () => {
 		};
 	};
  
-	const handleLogout = () => {
-		localStorage.removeItem('hc_wallet');
-		localStorage.removeItem('hc_did');
-		localStorage.removeItem('hc_role');
+	const handleLogout = async () => {
+		await logoutWithAudit();
 		window.location.href = '/login';
 	};
 
@@ -216,6 +220,19 @@ const VerifierDashboard: React.FC = () => {
 			return;
 		}
 
+		void (async () => {
+			try {
+				const response = await apiClient.get('/auth/professional/me');
+				const profile = response.data?.profile;
+				setVerifierProfile({
+					fullName: String(profile?.fullName || '').trim() || 'Unknown Verifier',
+					professionalId: String(profile?.professionalId || '').trim() || 'N/A',
+				});
+			} catch {
+				setVerifierProfile(null);
+			}
+		})();
+
 		return () => {
 			void stopScanner();
 		};
@@ -224,7 +241,15 @@ const VerifierDashboard: React.FC = () => {
 	return (
 		<div className="verifier-dashboard">
 			<header className="verifier-header">
-				<h1>Verifier Dashboard</h1>
+				<div className="verifier-heading">
+					<h1>Verifier Dashboard</h1>
+					{verifierProfile ? (
+						<div className="verifier-identity">
+							<span className="verifier-identity-name">{verifierProfile.fullName}</span>
+							<span className="verifier-identity-id">Professional ID: {verifierProfile.professionalId}</span>
+						</div>
+					) : null}
+				</div>
 				<button className="btn logout" onClick={handleLogout}>Logout</button>
 			</header>
 

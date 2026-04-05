@@ -27,11 +27,11 @@
 	margin: 0px auto;
 	padding: 28px;
 	color: var(--patient-ink);
-	border-radius: 10px;
+	border-radius: 1px;
 	background:
-		radial-gradient(circle at top left, rgba(189, 166, 206, 0.45), transparent 34%),
-		radial-gradient(circle at top right, rgba(180, 211, 217, 0.42), transparent 28%),
-		linear-gradient(180deg, #fff9f3 0%, #f7f1ea 42%, #f4efe8 100%);
+		 radial-gradient(circle at top left, rgba(180, 211, 217, 0.72), transparent 28%),
+        radial-gradient(circle at top right, rgba(189, 166, 206, 0.58), transparent 24%),
+        linear-gradient(180deg, #fdf4ea 0%, #f6eadf 42%, #efe1d4 100%);
 	box-shadow: var(--patient-shadow);
 	border: 1px solid rgba(155, 142, 199, 0.18);
 }
@@ -462,6 +462,45 @@
 	color: #5f5874;
 }
 
+.credential-details-modal {
+	max-width: 760px;
+	width: min(100%, 760px);
+}
+
+.credential-summary-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+	margin-top: 12px;
+}
+
+.credential-summary-item {
+	padding: 12px 14px;
+	border-radius: 16px;
+	background: rgba(255, 255, 255, 0.9);
+	border: 1px solid rgba(155, 142, 199, 0.2);
+	box-shadow: 0 8px 18px rgba(82, 67, 114, 0.08);
+}
+
+.credential-summary-label {
+	display: block;
+	margin-bottom: 6px;
+	font-size: 0.78rem;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: #6a6287;
+}
+
+.credential-summary-value {
+	display: block;
+	font-size: 1rem;
+	font-weight: 600;
+	line-height: 1.4;
+	color: #3d3652;
+	word-break: break-word;
+}
+
 .credential-qr-code-wrap {
 	display: flex;
 	justify-content: center;
@@ -480,7 +519,7 @@
 }
 
 .hybrid-payload-textarea {
-	width: 100%;
+	width: 95%;
 	min-height: 88px;
 	padding: 12px;
 	border-radius: 14px;
@@ -583,6 +622,10 @@
 	.doctor-apply-card,
 	.credential-qr-modal {
 		border-radius: 18px;
+	}
+
+	.credential-summary-grid {
+		grid-template-columns: 1fr;
 	}
 
 	.scanner-actions {

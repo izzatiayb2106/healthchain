@@ -1,0 +1,54 @@
+{
+  "logs": [
+    {
+      "id": "1775308056684-xlycefp",
+      "timestamp": "2026-04-04T13:07:36.684Z",
+      "action": "logout",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775306318061-c3ldwel",
+      "timestamp": "2026-04-04T12:38:38.061Z",
+      "action": "login",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775305513214-ndxymoz",
+      "timestamp": "2026-04-04T12:25:13.214Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775305507532-zhygbdb",
+      "timestamp": "2026-04-04T12:25:07.532Z",
+      "action": "logout",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775305495107-wy6sk0f",
+      "timestamp": "2026-04-04T12:24:55.107Z",
+      "action": "login",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "JWT login success"
+    }
+  ]
+}

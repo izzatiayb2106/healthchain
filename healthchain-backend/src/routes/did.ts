@@ -7,6 +7,7 @@ import {
   getIdentityByWallet,
   listDoctorRequests,
   listIdentities,
+  setIdentityLock,
   setCaDid,
   setDoctorRequestStatus,
   setRole,
@@ -15,6 +16,7 @@ import {
   UserRole,
 } from "../services/authServices";
 import { requireAdmin } from "../middleware/adminAuth";
+import { appendAuditLog, listAuditLogs } from "../services/auditLogService";
 
 export default function didRoutes(agent: any) {
   const router = express.Router();
@@ -91,6 +93,75 @@ export default function didRoutes(agent: any) {
     } catch (error: any) {
       console.error(error)
       res.status(500).json({ error: error?.message || 'Failed to update role' })
+    }
+  })
+
+  router.put('/mapping/:wallet/lock', requireAdmin, async (req, res) => {
+    try {
+      const wallet = String(req.params.wallet || '').trim()
+      const reason = String(req.body.reason || '').trim()
+      const identity = await getIdentityByWallet(wallet)
+      if (!identity) {
+        return res.status(404).json({ error: 'Identity not found' })
+      }
+      if (identity.role === 'admin') {
+        return res.status(400).json({ error: 'Admin account cannot be locked' })
+      }
+
+      const updated = await setIdentityLock(wallet, true, reason || 'Locked by admin')
+      await appendAuditLog({
+        action: 'lock_user',
+        role: 'admin',
+        wallet: String(req.header('x-admin-wallet') || '').trim().toLowerCase() || 'unknown',
+        status: 'success',
+        details: `Locked ${updated.wallet}`,
+        metadata: { targetWallet: updated.wallet, reason: updated.lockReason || null },
+      })
+
+      return res.json(updated)
+    } catch (error: any) {
+      console.error(error)
+      return res.status(500).json({ error: error?.message || 'Failed to lock user' })
+    }
+  })
+
+  router.put('/mapping/:wallet/unlock', requireAdmin, async (req, res) => {
+    try {
+      const wallet = String(req.params.wallet || '').trim()
+      const identity = await getIdentityByWallet(wallet)
+      if (!identity) {
+        return res.status(404).json({ error: 'Identity not found' })
+      }
+
+      const updated = await setIdentityLock(wallet, false)
+      await appendAuditLog({
+        action: 'unlock_user',
+        role: 'admin',
+        wallet: String(req.header('x-admin-wallet') || '').trim().toLowerCase() || 'unknown',
+        status: 'success',
+        details: `Unlocked ${updated.wallet}`,
+        metadata: { targetWallet: updated.wallet },
+      })
+
+      return res.json(updated)
+    } catch (error: any) {
+      console.error(error)
+      return res.status(500).json({ error: error?.message || 'Failed to unlock user' })
+    }
+  })
+
+  router.get('/audit/logs', requireAdmin, async (req, res) => {
+    try {
+      const limit = Number(req.query.limit || 200)
+      const role = String(req.query.role || '').trim() || undefined
+      const action = String(req.query.action || '').trim() || undefined
+      const wallet = String(req.query.wallet || '').trim() || undefined
+
+      const logs = await listAuditLogs({ limit, role, action, wallet })
+      return res.json({ total: logs.length, logs })
+    } catch (error: any) {
+      console.error(error)
+      return res.status(500).json({ error: error?.message || 'Failed to load audit logs' })
     }
   })
 

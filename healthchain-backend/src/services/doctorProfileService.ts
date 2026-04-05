@@ -7,7 +7,8 @@ export type DoctorProfile = {
   displayName: string;
   specialty: string;
   hospitalOrClinic: string;
-  licenseNumber: string;
+  professionalId: string;
+  licenseNumber?: string;
   avatarUrl: string;
   legalName: string;
   legalNameVerified: boolean;
@@ -30,6 +31,10 @@ function normalizeDid(did: string) {
   return String(did || "").trim();
 }
 
+function normalizeProfessionalId(value: string) {
+  return String(value || "").trim();
+}
+
 async function ensureStoreExists() {
   await fs.mkdir(dataDir, { recursive: true });
   try {
@@ -43,9 +48,14 @@ async function ensureStoreExists() {
 async function readStore(): Promise<DoctorProfileStore> {
   await ensureStoreExists();
   const raw = await fs.readFile(storePath, "utf8");
-  const parsed = JSON.parse(raw) as DoctorProfileStore;
+  const parsed = JSON.parse(raw) as { profiles?: any[] };
   return {
-    profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
+    profiles: Array.isArray(parsed.profiles)
+      ? parsed.profiles.map((profile) => ({
+          ...profile,
+          professionalId: normalizeProfessionalId(profile?.professionalId || profile?.licenseNumber || ""),
+        }))
+      : [],
   };
 }
 
@@ -66,6 +76,7 @@ export async function upsertDoctorProfile(input: {
   displayName?: string;
   specialty?: string;
   hospitalOrClinic?: string;
+  professionalId?: string;
   licenseNumber?: string;
   avatarUrl?: string;
   legalName?: string;
@@ -86,7 +97,11 @@ export async function upsertDoctorProfile(input: {
     if (typeof input.displayName === "string") existing.displayName = input.displayName.trim();
     if (typeof input.specialty === "string") existing.specialty = input.specialty.trim();
     if (typeof input.hospitalOrClinic === "string") existing.hospitalOrClinic = input.hospitalOrClinic.trim();
-    if (typeof input.licenseNumber === "string") existing.licenseNumber = input.licenseNumber.trim();
+    if (typeof input.professionalId === "string") {
+      existing.professionalId = normalizeProfessionalId(input.professionalId);
+    } else if (typeof input.licenseNumber === "string") {
+      existing.professionalId = normalizeProfessionalId(input.licenseNumber);
+    }
     if (typeof input.avatarUrl === "string") existing.avatarUrl = input.avatarUrl.trim();
     if (typeof input.legalName === "string") existing.legalName = input.legalName.trim();
     if (typeof input.legalNameVerified === "boolean") existing.legalNameVerified = input.legalNameVerified;
@@ -101,7 +116,7 @@ export async function upsertDoctorProfile(input: {
     displayName: String(input.displayName || "").trim(),
     specialty: String(input.specialty || "").trim(),
     hospitalOrClinic: String(input.hospitalOrClinic || "").trim(),
-    licenseNumber: String(input.licenseNumber || "").trim(),
+    professionalId: normalizeProfessionalId(input.professionalId || input.licenseNumber || ""),
     avatarUrl: String(input.avatarUrl || "").trim(),
     legalName: String(input.legalName || "").trim(),
     legalNameVerified: Boolean(input.legalNameVerified),

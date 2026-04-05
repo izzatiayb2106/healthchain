@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { QRCodeSVG } from 'qrcode.react';
-import { apiClient, getStoredToken } from '../../services/authService';
+import { apiClient, getStoredToken, logoutWithAudit } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryAddress, getCredentialRegistryContract, mapChainRecordTuple, type HybridChainRecord } from '../../blockchain/credentialRegistry';
 import './patient.css';
 
@@ -80,6 +80,21 @@ const emptyProfileForm = {
 };
 
 const CHAIN_READ_RPC_URL = String(import.meta.env.VITE_CHAIN_READ_RPC_URL || 'http://127.0.0.1:8545').trim();
+
+function normalizeHash(value: string) {
+	const trimmed = String(value || '').trim().toLowerCase();
+	if (!trimmed) {
+		return '';
+	}
+	return trimmed.startsWith('0x') ? trimmed : `0x${trimmed}`;
+}
+
+async function sha256Hex(input: string) {
+	const encoder = new TextEncoder();
+	const bytes = encoder.encode(String(input || ''));
+	const digest = await window.crypto.subtle.digest('SHA-256', bytes);
+	return `0x${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
 
 const PatientDashboard: React.FC = () => {
 	const [profile, setProfile] = useState<PatientProfile | null>(null);
@@ -334,12 +349,9 @@ const PatientDashboard: React.FC = () => {
 			}
 			console.log(`[DECRYPT] Got encrypted payload, hash: ${expectedHash}`);
 
-			console.log(`[DECRYPT] Validating payload integrity`);
-			const validateRes = await apiClient.post('/credential/hybrid/validate-payload', {
-				payloadHash: expectedHash,
-				encryptedCredentialHex,
-			});
-			if (!Boolean(validateRes.data?.matches)) {
+			console.log(`[DECRYPT] Validating payload integrity locally`);
+			const localHash = normalizeHash(await sha256Hex(encryptedCredentialHex));
+			if (!localHash || localHash !== normalizeHash(expectedHash)) {
 				setHybridError('Integrity check failed. Payload hash mismatch.');
 				return;
 			}
@@ -508,11 +520,8 @@ const PatientDashboard: React.FC = () => {
 		return () => window.clearInterval(timer);
 	}, [qrSession]);
 
-	const handleLogout = () => {
-		localStorage.removeItem('hc_wallet');
-		localStorage.removeItem('hc_did');
-		localStorage.removeItem('hc_role');
-		localStorage.removeItem('hc_jwt_token');
+	const handleLogout = async () => {
+		await logoutWithAudit();
 		window.location.href = '/login';
 	};
 
@@ -677,9 +686,18 @@ const PatientDashboard: React.FC = () => {
 
 	const decodedHybrid = hybridDecrypted ? decodeVcJwt(hybridDecrypted.vcJwt) : null;
 	const decodedSubject = decodedHybrid?.vc?.credentialSubject || null;
-	const decodedTypes = Array.isArray(decodedHybrid?.vc?.type)
-		? decodedHybrid?.vc?.type?.filter((item) => item !== 'VerifiableCredential')
-		: [];
+	const patientName = String(decodedSubject?.patientName || decodedSubject?.name || 'N/A');
+	const vaccineType = String(decodedSubject?.vaccineType || 'N/A');
+	const batchNumber = String(decodedSubject?.batchNumber || 'N/A');
+	const manufacturer = String(decodedSubject?.manufacturer || 'N/A');
+	const hospitalOrClinic = String(decodedSubject?.hospitalOrClinic || 'N/A');
+	const credentialProfessionalId = String(decodedSubject?.professionalId || decodedSubject?.licenseNumber || 'N/A');
+	const expirationRaw = String(decodedSubject?.expirationDate || decodedSubject?.expirationPolicy || '').trim();
+	const expirationDate = expirationRaw
+		? (/^lifetime$/i.test(expirationRaw)
+			? 'Lifetime'
+			: (Number.isNaN(Date.parse(expirationRaw)) ? expirationRaw : new Date(expirationRaw).toLocaleString()))
+		: (decodedHybrid?.exp ? new Date(decodedHybrid.exp * 1000).toLocaleString() : 'N/A');
 
 	const registerWithDoctor = async (event: React.FormEvent) => {
 		event.preventDefault();
@@ -941,42 +959,62 @@ const PatientDashboard: React.FC = () => {
 						</article>
 					))}
 				</div>
+			</section>
 
 				{hybridDecrypted ? (
-					<div className="patient-card" style={{ marginTop: '12px' }}>
-						<div className="credential-details-header">
-							<h3>Credential Details</h3>
-							<button
-								type="button"
-								className="btn-close-details"
-								onClick={() => setHybridDecrypted(null)}
-								title="Close credential details"
-							>
-								✕
-							</button>
-						</div>
-						<p><strong>Type:</strong> {decodedTypes && decodedTypes.length ? decodedTypes.join(', ') : 'N/A'}</p>
-						<p><strong>Issuer DID:</strong> {decodedHybrid?.issuer || 'N/A'}</p>
-						<p><strong>Issued At:</strong> {decodedHybrid?.issuanceDate ? new Date(decodedHybrid.issuanceDate).toLocaleString() : 'N/A'}</p>
-						<p><strong>Expires:</strong> {decodedHybrid?.exp ? new Date(decodedHybrid.exp * 1000).toLocaleString() : 'N/A'}</p>
+					<div
+						className="modal-overlay"
+						onClick={() => setHybridDecrypted(null)}
+					>
+						<div
+							className="credential-qr-modal credential-details-modal"
+							onClick={(event) => event.stopPropagation()}
+						>
+							<div className="credential-details-header">
+								<h3>Credential Details</h3>
+								<button
+									type="button"
+									className="btn-close-details"
+									onClick={() => setHybridDecrypted(null)}
+									title="Close credential details"
+								>
+									✕
+								</button>
+							</div>
 
-						{decodedSubject ? (
-							<div className="decrypted-details">
-								<h4>Credential Subject</h4>
-								<div className="decrypted-subject-grid">
-								{Object.entries(decodedSubject).map(([key, value]) => (
-									<p key={key} className="decrypted-subject-item">
-										<strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-									</p>
-								))}
+							<div className="credential-summary-grid">
+								<div className="credential-summary-item">
+									<span className="credential-summary-label">Patient Name</span>
+									<span className="credential-summary-value">{patientName}</span>
+								</div>
+								<div className="credential-summary-item">
+									<span className="credential-summary-label">Vaccine Type</span>
+									<span className="credential-summary-value">{vaccineType}</span>
+								</div>
+								<div className="credential-summary-item">
+									<span className="credential-summary-label">Hospital</span>
+									<span className="credential-summary-value">{hospitalOrClinic}</span>
+								</div>
+								<div className="credential-summary-item">
+									<span className="credential-summary-label">Expiration Date</span>
+									<span className="credential-summary-value">{expirationDate}</span>
+								</div>
+								<div className="credential-summary-item">
+									<span className="credential-summary-label">Batch Number</span>
+									<span className="credential-summary-value">{batchNumber}</span>
+								</div>
+								<div className="credential-summary-item">
+									<span className="credential-summary-label">Manufacturer</span>
+									<span className="credential-summary-value">{manufacturer}</span>
+								</div>
+								<div className="credential-summary-item">
+									<span className="credential-summary-label">Professional ID</span>
+									<span className="credential-summary-value">{credentialProfessionalId}</span>
 								</div>
 							</div>
-						) : null}
-
-						
+						</div>
 					</div>
 				) : null}
-			</section>
 
 			{qrSession ? (
 				<div className="modal-overlay" onClick={closeQrModal}>

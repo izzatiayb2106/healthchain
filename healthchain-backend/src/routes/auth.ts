@@ -11,6 +11,7 @@ import {
 } from "../services/ministryRegistryService";
 import { registerSseConnection } from "../services/eventService";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
+import { appendAuditLog } from "../services/auditLogService";
 
 const KNOWN_ROLES = new Set(["patient", "doctor", "verifier", "admin"]);
 
@@ -115,6 +116,21 @@ export default function authRoutes(agent: any) {
 
       const patientCredentialIssued = false;
 
+      if ((mapped as any)?.locked) {
+        await appendAuditLog({
+          action: "login",
+          role: mapped.role,
+          wallet: mapped.wallet,
+          did: mapped.did,
+          status: "failed",
+          details: "Blocked login attempt from locked account",
+        });
+        return res.status(423).json({
+          error: "This account is locked by admin",
+          reason: (mapped as any)?.lockReason || "Locked by admin",
+        });
+      }
+
       // Generate JWT token
       const { generateToken } = await import("../services/jwtService");
       const normalizedRole = normalizeRole(mapped.role);
@@ -134,9 +150,41 @@ export default function authRoutes(agent: any) {
         didCreated: ensured.created,
         patientCredentialIssued,
       });
+
+      await appendAuditLog({
+        action: "login",
+        role: mapped.role,
+        wallet: mapped.wallet,
+        did: mapped.did,
+        status: "success",
+        details: "JWT login success",
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Authentication failed" });
+    }
+  });
+
+  router.post("/logout", jwtAuthMiddleware, async (req, res) => {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      await appendAuditLog({
+        action: "logout",
+        role: normalizeRole(user.role),
+        wallet: user.wallet,
+        did: user.did,
+        status: "success",
+        details: "User logout",
+      });
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Failed to record logout" });
     }
   });
 
@@ -205,7 +253,7 @@ export default function authRoutes(agent: any) {
           wallet: updated.wallet,
           legalName: licenseRecord.fullName,
           legalNameVerified: Boolean(licenseRecord.fullName),
-          licenseNumber: licenseRecord.professionalId,
+          professionalId: licenseRecord.professionalId,
         });
       }
 
@@ -235,6 +283,47 @@ export default function authRoutes(agent: any) {
     } catch (err: any) {
       console.error(err);
       return res.status(500).json({ error: "Failed to load Ministry registry" });
+    }
+  });
+
+  // Authenticated professional profile for current wallet (doctor/verifier).
+  router.get("/professional/me", jwtAuthMiddleware, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.wallet) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const role = String(user.role || "").toLowerCase();
+      if (role !== "doctor" && role !== "verifier") {
+        return res.status(403).json({ error: "Professional role required" });
+      }
+
+      const wallet = String(user.wallet || "").trim().toLowerCase();
+      const records = await listMinistryLicenseRecords();
+      const record = records.find(
+        (entry) => String(entry.linkedWallet || "").trim().toLowerCase() === wallet,
+      );
+
+      if (!record) {
+        return res.status(404).json({ error: "Professional profile not found for this wallet" });
+      }
+
+      return res.json({
+        success: true,
+        profile: {
+          fullName: String(record.fullName || "").trim() || "Unknown Professional",
+          professionalId: String(record.professionalId || "").trim() || "N/A",
+          role: String(record.role || role).trim().toLowerCase(),
+          licenseType: String(record.licenseType || "").trim(),
+          specialty: String(record.specialty || "").trim(),
+          status: String(record.status || "").trim().toLowerCase(),
+          validUntil: String(record.validUntil || "").trim(),
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Failed to load professional profile" });
     }
   });
 

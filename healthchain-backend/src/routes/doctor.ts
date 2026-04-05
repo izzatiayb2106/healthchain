@@ -72,7 +72,7 @@ export default function doctorRoutes() {
       const displayName = String(req.body.displayName || "").trim();
       const specialty = String(req.body.specialty || "").trim();
       const hospitalOrClinic = String(req.body.hospitalOrClinic || "").trim();
-      const licenseNumber = String(req.body.licenseNumber || "").trim();
+      const professionalId = String(req.body.professionalId || req.body.licenseNumber || "").trim();
       const avatarUrl = String(req.body.avatarUrl || "").trim();
 
       if (!displayName || !specialty || !hospitalOrClinic) {
@@ -91,7 +91,7 @@ export default function doctorRoutes() {
         displayName,
         specialty,
         hospitalOrClinic,
-        licenseNumber,
+        professionalId,
         avatarUrl,
       });
 
@@ -121,7 +121,7 @@ export default function doctorRoutes() {
         displayName: req.body.displayName,
         specialty: req.body.specialty,
         hospitalOrClinic: req.body.hospitalOrClinic,
-        licenseNumber: req.body.licenseNumber,
+        professionalId: req.body.professionalId ?? req.body.licenseNumber,
         avatarUrl: req.body.avatarUrl,
       } as Record<string, unknown>;
 
@@ -135,7 +135,7 @@ export default function doctorRoutes() {
       const displayName = typeof payload.displayName === "string" ? String(payload.displayName).trim() : undefined;
       const specialty = typeof payload.specialty === "string" ? String(payload.specialty).trim() : undefined;
       const hospitalOrClinic = typeof payload.hospitalOrClinic === "string" ? String(payload.hospitalOrClinic).trim() : undefined;
-      const licenseNumber = typeof payload.licenseNumber === "string" ? String(payload.licenseNumber).trim() : undefined;
+      const professionalId = typeof payload.professionalId === "string" ? String(payload.professionalId).trim() : undefined;
       const avatarUrl = typeof payload.avatarUrl === "string" ? String(payload.avatarUrl).trim() : undefined;
 
       if (avatarUrl !== undefined && !isValidAvatarUrl(avatarUrl)) {
@@ -148,7 +148,7 @@ export default function doctorRoutes() {
         displayName,
         specialty,
         hospitalOrClinic,
-        licenseNumber,
+        professionalId,
         avatarUrl,
       });
 

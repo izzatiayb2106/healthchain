@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { createHash } = require('crypto');
 const jwt = require('jsonwebtoken');
 const { ethers } = require('ethers');
 const { getEncryptionPublicKey } = require('@metamask/eth-sig-util');
@@ -9,6 +10,10 @@ const JWT_SECRET = (process.env.JWT_SECRET || 'healthchain-dev-secret-change-in-
 
 function readJson(p) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+
+function sha256Hex(input) {
+  return `0x${createHash('sha256').update(String(input || ''), 'utf8').digest('hex')}`;
 }
 
 function authHeader(token) {
@@ -149,14 +154,9 @@ async function get(url, token) {
     String(latest[4]).toLowerCase() === String(prepare.payloadHash).toLowerCase();
 
   const encryptedByCid = await get(`${API}/credential/hybrid/cid/${encodeURIComponent(prepare.cid)}`, patientToken);
-  const validatePayload = await post(
-    `${API}/credential/hybrid/validate-payload`,
-    {
-      payloadHash: prepare.payloadHash,
-      encryptedCredentialHex: encryptedByCid.encryptedCredentialHex,
-    },
-    patientToken
-  );
+  const validatePayloadMatches =
+    String(prepare.payloadHash || '').trim().toLowerCase() ===
+    sha256Hex(encryptedByCid.encryptedCredentialHex).toLowerCase();
 
   const standardIssue = await post(
     `${API}/credential/issue`,
@@ -221,7 +221,7 @@ async function get(url, token) {
       hybridFinalized: Boolean(finalize?.success),
       patientChainReadCount: count,
       patientLatestRecordMatchesPreparedPayload: onChainMatches,
-      payloadHashValidationMatches: Boolean(validatePayload?.matches),
+      payloadHashValidationMatches: Boolean(validatePayloadMatches),
       verifyRecordTrue: Boolean(onChainVerify),
       standardCredentialIssued: Boolean(standardIssue?.success),
       patientCredentialsReadable: Number(patientCreds?.total || 0),

@@ -34,12 +34,6 @@ function normalizeWallet(wallet: string) {
   return String(wallet || '').trim().toLowerCase()
 }
 
-function normalizeHash(hash: string) {
-  const h = String(hash || '').trim().toLowerCase()
-  if (!h) return ''
-  return h.startsWith('0x') ? h : `0x${h}`
-}
-
 function getPinataJwt() {
   return String(process.env.PINATA_JWT || '').trim()
 }
@@ -360,6 +354,3 @@ export async function findHybridByLegacyReference(subjectDid: string, legacyIssu
   )
 }
 
-export function payloadHashMatches(payloadHash: string, encryptedCredentialHex: string) {
-  return normalizeHash(payloadHash) === sha256Hex(String(encryptedCredentialHex || '').trim())
-}

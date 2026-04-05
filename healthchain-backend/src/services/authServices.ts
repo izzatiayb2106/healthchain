@@ -7,6 +7,9 @@ type IdentityRecord = {
 	wallet: string
 	did: string
 	role: UserRole
+	locked: boolean
+	lockReason?: string
+	lockedAt?: string
 	createdAt: string
 	updatedAt: string
 }
@@ -61,7 +64,18 @@ async function readStore(): Promise<IdentityStore> {
 			parsed.systemAdminWallet ||
 			(process.env.SUPERADMIN_WALLET ? normalizeWallet(process.env.SUPERADMIN_WALLET) : null),
 		doctorRequests: Array.isArray(parsed.doctorRequests) ? parsed.doctorRequests : [],
-		identities: Array.isArray(parsed.identities) ? parsed.identities : [],
+		identities: Array.isArray(parsed.identities)
+			? parsed.identities.map((entry: any) => ({
+				wallet: normalizeWallet(String(entry?.wallet || '')),
+				did: String(entry?.did || '').trim(),
+				role: (String(entry?.role || 'pending').trim().toLowerCase() as UserRole) || 'pending',
+				locked: Boolean(entry?.locked),
+				lockReason: String(entry?.lockReason || '').trim() || undefined,
+				lockedAt: String(entry?.lockedAt || '').trim() || undefined,
+				createdAt: String(entry?.createdAt || new Date().toISOString()),
+				updatedAt: String(entry?.updatedAt || new Date().toISOString()),
+			}))
+			: [],
 	}
 }
 
@@ -98,6 +112,7 @@ export async function upsertIdentity(wallet: string, did: string, role: UserRole
 		wallet: normalizedWallet,
 		did,
 		role,
+		locked: false,
 		createdAt: now,
 		updatedAt: now,
 	}
@@ -122,6 +137,28 @@ export async function setRole(wallet: string, role: UserRole) {
 export async function listIdentities() {
 	const store = await readStore()
 	return store.identities
+}
+
+export async function setIdentityLock(wallet: string, locked: boolean, reason?: string) {
+	const normalizedWallet = normalizeWallet(wallet)
+	const store = await readStore()
+	const existing = store.identities.find((entry) => entry.wallet === normalizedWallet)
+	if (!existing) {
+		throw new Error('Identity not found')
+	}
+
+	existing.locked = Boolean(locked)
+	existing.lockReason = locked ? String(reason || '').trim() || 'Locked by admin' : undefined
+	existing.lockedAt = locked ? new Date().toISOString() : undefined
+	existing.updatedAt = new Date().toISOString()
+
+	await writeStore(store)
+	return existing
+}
+
+export async function isIdentityLocked(wallet: string) {
+	const identity = await getIdentityByWallet(wallet)
+	return Boolean(identity?.locked)
 }
 
 export async function getCaDid() {

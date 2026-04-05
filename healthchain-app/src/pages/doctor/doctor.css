@@ -29,9 +29,9 @@
 	color: var(--doctor-ink);
 	border-radius: 10px;
 	background:
-		radial-gradient(circle at top left, rgba(180, 211, 217, 0.42), transparent 32%),
-		radial-gradient(circle at top right, rgba(189, 166, 206, 0.34), transparent 30%),
-		linear-gradient(180deg, #fffaf4 0%, #f7f1ea 42%, #f3eee8 100%);
+		 radial-gradient(circle at top left, rgba(180, 211, 217, 0.72), transparent 28%),
+        radial-gradient(circle at top right, rgba(189, 166, 206, 0.58), transparent 24%),
+        linear-gradient(180deg, #fdf4ea 0%, #f6eadf 42%, #efe1d4 100%);
 	box-shadow: var(--doctor-shadow);
 	border: 1px solid rgba(155, 142, 199, 0.18);
 }

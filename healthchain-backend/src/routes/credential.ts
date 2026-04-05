@@ -5,15 +5,101 @@ import { getIdentityByDid, getIdentityByWallet, upsertIdentity } from "../servic
 import { ensureDidForWallet } from "../services/didService";
 import { createCredentialQrSession } from "../services/credentialQrService";
 import { getPatientProfileByDid } from "../services/patientProfileService";
+import { getDoctorProfileByDid } from "../services/doctorProfileService";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 import {
   finalizeHybridCredential,
   getHybridCredentialByCid,
   listHybridCredentialsBySubjectDid,
-  payloadHashMatches,
   storeHybridEncryptedCredential,
 } from "../services/hybridCredentialService";
 import { emitEventToWallet } from "../services/eventService";
+import { appendAuditLog } from "../services/auditLogService";
+
+type ExpirationResolution = {
+  expirationDate: string | null;
+  expirationPolicy: string;
+};
+
+const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function toIso(ms: number) {
+  return new Date(ms).toISOString();
+}
+
+function parseDate(input: string) {
+  const timestamp = Date.parse(String(input || ""));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function yearsFrom(issuedAtMs: number, years: number) {
+  const date = new Date(issuedAtMs);
+  date.setUTCFullYear(date.getUTCFullYear() + years);
+  return date.toISOString();
+}
+
+function resolveExpiration(credentialDetails: any, issuedAtIso: string): ExpirationResolution {
+  const issuedAtMs = Date.parse(issuedAtIso);
+  const vaccineType = String(credentialDetails?.vaccineType || "").trim().toLowerCase();
+  const patientDob = String(credentialDetails?.patientDob || credentialDetails?.dateOfBirth || "").trim();
+
+  if (vaccineType === "yellow fever") {
+    return { expirationDate: null, expirationPolicy: "Lifetime" };
+  }
+  if (vaccineType === "meningococcal (conjugate)") {
+    return { expirationDate: yearsFrom(issuedAtMs, 5), expirationPolicy: "5 years" };
+  }
+  if (vaccineType === "meningococcal (polysaccharide)") {
+    return { expirationDate: yearsFrom(issuedAtMs, 3), expirationPolicy: "3 years" };
+  }
+  if (vaccineType === "tetanus / diphtheria (tdap)" || vaccineType === "tetanus") {
+    return { expirationDate: yearsFrom(issuedAtMs, 10), expirationPolicy: "10 years" };
+  }
+  if (vaccineType === "typhoid (injectable)") {
+    return { expirationDate: yearsFrom(issuedAtMs, 3), expirationPolicy: "3 years" };
+  }
+  if (vaccineType === "typhoid (oral)") {
+    return { expirationDate: yearsFrom(issuedAtMs, 1), expirationPolicy: "1 year" };
+  }
+  if (vaccineType === "cholera (adults)") {
+    return { expirationDate: yearsFrom(issuedAtMs, 2), expirationPolicy: "2 years" };
+  }
+  if (vaccineType === "cholera (short-term)") {
+    return { expirationDate: toIso(issuedAtMs + 10 * DAY_MS), expirationPolicy: "10 days" };
+  }
+  if (vaccineType === "cholera") {
+    const dobMs = parseDate(patientDob);
+    if (dobMs) {
+      const ageYears = (issuedAtMs - dobMs) / YEAR_MS;
+      if (ageYears < 18) {
+        return { expirationDate: toIso(issuedAtMs + 10 * DAY_MS), expirationPolicy: "10 days" };
+      }
+    }
+    return { expirationDate: yearsFrom(issuedAtMs, 2), expirationPolicy: "2 years" };
+  }
+  if (vaccineType === "polio") {
+    return { expirationDate: yearsFrom(issuedAtMs, 1), expirationPolicy: "12 months" };
+  }
+  if (vaccineType === "influenza") {
+    return { expirationDate: yearsFrom(issuedAtMs, 1), expirationPolicy: "1 year" };
+  }
+  if (vaccineType === "covid-19") {
+    return { expirationDate: toIso(issuedAtMs + 270 * DAY_MS), expirationPolicy: "270 days" };
+  }
+  if (vaccineType === "hepatitis a / b" || vaccineType === "hepatitis b") {
+    return { expirationDate: null, expirationPolicy: "Lifetime" };
+  }
+  if (vaccineType === "hpv (human papillomavirus)" || vaccineType === "hpv") {
+    return { expirationDate: null, expirationPolicy: "Lifetime" };
+  }
+  if (vaccineType === "mmr (measles, mumps, rubella)" || vaccineType === "mmr") {
+    return { expirationDate: null, expirationPolicy: "Lifetime" };
+  }
+
+  // Fallback for custom/other vaccines
+  return { expirationDate: yearsFrom(issuedAtMs, 1), expirationPolicy: "1 year" };
+}
 
 async function resolveIdentityByJWT(req: express.Request) {
   if (!req.user) {
@@ -131,20 +217,31 @@ export default function credentialRoutes(agent: any) {
         await upsertIdentity(doctorIdentity.wallet, issuerDid, doctorIdentity.role);
       }
 
+      const doctorProfile = await getDoctorProfileByDid(doctorIdentity.did);
+
       const credentialType = String(req.body.credentialType || "VaccinationCredential").trim() || "VaccinationCredential";
       const issuedAt = new Date().toISOString();
+      const credentialDetails = req.body.credentialDetails && typeof req.body.credentialDetails === "object"
+        ? req.body.credentialDetails
+        : {};
+      const expiration = resolveExpiration(credentialDetails, issuedAt);
+
       const credential = await agent.createVerifiableCredential({
         credential: {
           issuer: { id: issuerDid },
           issuanceDate: issuedAt,
+          ...(expiration.expirationDate ? { expirationDate: expiration.expirationDate } : {}),
           credentialSubject: {
             id: patientIdentity.did,
             wallet: patientIdentity.wallet,
             name: req.body.name,
             role: req.body.role || "patient",
-            ...(req.body.credentialDetails && typeof req.body.credentialDetails === "object"
-              ? req.body.credentialDetails
-              : {}),
+            ...credentialDetails,
+            hospitalOrClinic: String(doctorProfile?.hospitalOrClinic || credentialDetails?.hospitalOrClinic || "").trim() || "N/A",
+            professionalId: String(doctorProfile?.professionalId || credentialDetails?.professionalId || "").trim() || "N/A",
+            issuerDid,
+            expirationDate: expiration.expirationDate || "Lifetime",
+            expirationPolicy: expiration.expirationPolicy,
           },
           type: ["VerifiableCredential", credentialType],
         },
@@ -183,6 +280,21 @@ export default function credentialRoutes(agent: any) {
       };
       emitEventToWallet(patientIdentity.wallet, 'credential-issued', eventData);
       emitEventToWallet(doctorIdentity.wallet, 'credential-issued', eventData);
+
+      await appendAuditLog({
+        action: 'credential_issuance',
+        role: 'doctor',
+        wallet: doctorIdentity.wallet,
+        did: doctorIdentity.did,
+        status: 'success',
+        details: `Issued ${credentialType} to ${patientIdentity.wallet}`,
+        metadata: {
+          patientWallet: patientIdentity.wallet,
+          patientDid: patientIdentity.did,
+          cid: stored.cid,
+          payloadHash: stored.payloadHash,
+        },
+      });
 
       return res.status(201).json({
         success: true,
@@ -315,6 +427,20 @@ export default function credentialRoutes(agent: any) {
         });
       }
 
+      await appendAuditLog({
+        action: 'credential_decryption',
+        role: 'patient',
+        wallet: identity.wallet,
+        did: identity.did,
+        status: 'success',
+        details: `Fetched encrypted payload for decryption (${found.cid})`,
+        metadata: {
+          cid: found.cid,
+          recordId: found.recordId || null,
+          credentialType: found.credentialType,
+        },
+      });
+
       return res.json({
         success: true,
         cid: found.cid,
@@ -335,28 +461,6 @@ export default function credentialRoutes(agent: any) {
         return res.status(404).json({ error: message });
       }
       return res.status(500).json({ error: "Failed to fetch encrypted payload" });
-    }
-  });
-
-  router.post("/hybrid/validate-payload", async (req, res) => {
-    try {
-      const identity = await resolveIdentityByJWT(req);
-      if (identity.role !== "patient") {
-        return res.status(403).json({ error: "Patient role required for payload validation" });
-      }
-
-      const payloadHash = String(req.body.payloadHash || "").trim();
-      const encryptedCredentialHex = String(req.body.encryptedCredentialHex || "").trim();
-      if (!payloadHash || !encryptedCredentialHex) {
-        return res.status(400).json({ error: "payloadHash and encryptedCredentialHex are required" });
-      }
-
-      return res.json({
-        success: true,
-        matches: payloadHashMatches(payloadHash, encryptedCredentialHex),
-      });
-    } catch {
-      return res.status(500).json({ error: "Failed to validate payload hash" });
     }
   });
 
@@ -515,6 +619,21 @@ export default function credentialRoutes(agent: any) {
           payload.payloadHash
         )
       );
+
+      await appendAuditLog({
+        action: 'verification',
+        role: 'verifier',
+        wallet: verifierIdentity.wallet,
+        did: verifierIdentity.did,
+        status: valid ? 'success' : 'failed',
+        details: valid ? 'Hybrid credential verification succeeded' : 'Hybrid credential verification failed',
+        metadata: {
+          contractAddress: payload.contractAddress,
+          recordId: payload.recordId,
+          cid: payload.cid,
+          payloadHash: payload.payloadHash,
+        },
+      });
 
       return res.json({
         success: true,

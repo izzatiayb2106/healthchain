@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import "./login.css";
 import { loginWithJWT } from "../../services/authService";
+import healthchainLogo from "../../assets/healthchain.svg";
 
 declare global {
   interface Window {
@@ -77,7 +78,10 @@ const Login: React.FC = () => {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1>HealthChain</h1>
+        <div className="login-brand">
+          <img className="login-logo" src={healthchainLogo} alt="HealthChain" />
+          <h1>HealthChain</h1>
+        </div>
 
         {error && <div className="error">{error}</div>}
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-import { apiClient, getStoredToken } from '../../services/authService';
+import { apiClient, getStoredToken, logoutWithAudit } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryContract, getCredentialRegistryAddress } from '../../blockchain/credentialRegistry';
 import './doctor.css';
 
@@ -10,7 +10,8 @@ type DoctorProfile = {
     displayName: string;
     specialty: string;
     hospitalOrClinic: string;
-    licenseNumber: string;
+    professionalId: string;
+    licenseNumber?: string;
     avatarUrl: string;
     legalName: string;
     legalNameVerified: boolean;
@@ -61,14 +62,14 @@ const DoctorDashboard: React.FC = () => {
         displayName: '',
         specialty: '',
         hospitalOrClinic: '',
-        licenseNumber: '',
+        professionalId: '',
         avatarUrl: '',
     });
     const [editProfileForm, setEditProfileForm] = useState({
         displayName: '',
         specialty: '',
         hospitalOrClinic: '',
-        licenseNumber: '',
+        professionalId: '',
         avatarUrl: '',
     });
     const [onboardingAvatarPreviewError, setOnboardingAvatarPreviewError] = useState(false);
@@ -102,7 +103,7 @@ const DoctorDashboard: React.FC = () => {
             displayName: loadedProfile.displayName || loadedProfile.legalName || '',
             specialty: loadedProfile.specialty || '',
             hospitalOrClinic: loadedProfile.hospitalOrClinic || '',
-            licenseNumber: loadedProfile.licenseNumber || '',
+            professionalId: loadedProfile.professionalId || loadedProfile.licenseNumber || '',
             avatarUrl: loadedProfile.avatarUrl || '',
         };
         setOnboardingForm(next);
@@ -320,6 +321,8 @@ const DoctorDashboard: React.FC = () => {
                         doseNumber: vaccineForm.doseNumber,
                         dateAdministered: vaccineForm.dateAdministered,
                         nextDoseDate: vaccineForm.nextDoseDate,
+                        hospitalOrClinic: profile?.hospitalOrClinic || '',
+                        professionalId: profile?.professionalId || profile?.licenseNumber || '',
                         notes: vaccineForm.notes,
                     },
                 }
@@ -499,11 +502,8 @@ const DoctorDashboard: React.FC = () => {
         }
     }, [selectedPatient]);
 
-    const handleLogout = () => {
-        localStorage.removeItem('hc_wallet');
-        localStorage.removeItem('hc_did');
-        localStorage.removeItem('hc_role');
-        localStorage.removeItem('hc_jwt_token');
+    const handleLogout = async () => {
+        await logoutWithAudit();
         window.location.href = '/login';
     };
 
@@ -530,7 +530,7 @@ const DoctorDashboard: React.FC = () => {
                     displayName: onboardingForm.displayName,
                     specialty: onboardingForm.specialty,
                     hospitalOrClinic: onboardingForm.hospitalOrClinic,
-                    licenseNumber: onboardingForm.licenseNumber,
+                    professionalId: onboardingForm.professionalId,
                     avatarUrl: onboardingForm.avatarUrl,
                 }
             );
@@ -570,7 +570,7 @@ const DoctorDashboard: React.FC = () => {
                     displayName: editProfileForm.displayName,
                     specialty: editProfileForm.specialty,
                     hospitalOrClinic: editProfileForm.hospitalOrClinic,
-                    licenseNumber: editProfileForm.licenseNumber,
+                    professionalId: editProfileForm.professionalId,
                     avatarUrl: editProfileForm.avatarUrl,
                 }
             );
@@ -629,8 +629,8 @@ const DoctorDashboard: React.FC = () => {
                         <label htmlFor="hospitalOrClinic">Hospital or clinic *</label>
                         <input id="hospitalOrClinic" name="hospitalOrClinic" type="text" value={onboardingForm.hospitalOrClinic} onChange={handleOnboardingInput} required />
 
-                        <label htmlFor="licenseNumber">License number (optional)</label>
-                        <input id="licenseNumber" name="licenseNumber" type="text" value={onboardingForm.licenseNumber} onChange={handleOnboardingInput} />
+                        <label htmlFor="professionalId">Professional ID (optional)</label>
+                        <input id="professionalId" name="professionalId" type="text" value={onboardingForm.professionalId} onChange={handleOnboardingInput} />
 
                         <label htmlFor="avatarUrl">Avatar URL (optional)</label>
                         <input
@@ -699,8 +699,8 @@ const DoctorDashboard: React.FC = () => {
                         <label htmlFor="editHospitalOrClinic">Hospital or clinic *</label>
                         <input id="editHospitalOrClinic" name="hospitalOrClinic" type="text" value={editProfileForm.hospitalOrClinic} onChange={handleEditProfileInput} required />
 
-                        <label htmlFor="editLicenseNumber">License number (optional)</label>
-                        <input id="editLicenseNumber" name="licenseNumber" type="text" value={editProfileForm.licenseNumber} onChange={handleEditProfileInput} />
+                        <label htmlFor="editProfessionalId">Professional ID (optional)</label>
+                        <input id="editProfessionalId" name="professionalId" type="text" value={editProfileForm.professionalId} onChange={handleEditProfileInput} />
 
                         <label htmlFor="editAvatarUrl">Avatar URL (optional)</label>
                         <input
@@ -849,14 +849,20 @@ const DoctorDashboard: React.FC = () => {
                                     <label htmlFor="issueVaccineType">Vaccine Type *</label>
                                     <select id="issueVaccineType" name="vaccineType" value={vaccineForm.vaccineType} onChange={handleVaccineFormChange} required>
                                         <option value="">Select vaccine</option>
+                                        <option value="Yellow Fever">Yellow Fever</option>
+                                        <option value="Meningococcal (Conjugate)">Meningococcal (Conjugate)</option>
+                                        <option value="Meningococcal (Polysaccharide)">Meningococcal (Polysaccharide)</option>
+                                        <option value="Tetanus / Diphtheria (Tdap)">Tetanus / Diphtheria (Tdap)</option>
+                                        <option value="Typhoid (Injectable)">Typhoid (Injectable)</option>
+                                        <option value="Typhoid (Oral)">Typhoid (Oral)</option>
+                                        <option value="Cholera (Adults)">Cholera (Adults)</option>
+                                        <option value="Cholera (Short-term)">Cholera (Short-term)</option>
+                                        <option value="Polio">Polio</option>
                                         <option value="COVID-19">COVID-19</option>
                                         <option value="Influenza">Influenza</option>
-                                        <option value="Hepatitis B">Hepatitis B</option>
+                                        <option value="Hepatitis A / B">Hepatitis A / B</option>
+                                        <option value="HPV (Human Papillomavirus)">HPV (Human Papillomavirus)</option>
                                         <option value="MMR">MMR (Measles, Mumps, Rubella)</option>
-                                        <option value="Tetanus">Tetanus</option>
-                                        <option value="Polio">Polio</option>
-                                        <option value="HPV">HPV</option>
-                                        <option value="Other">Other</option>
                                     </select>
                                 </div>
                                 <div className="form-group">

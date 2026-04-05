@@ -60,6 +60,15 @@ export function logout() {
   localStorage.removeItem(DID_KEY);
 }
 
+export async function logoutWithAudit() {
+  try {
+    await apiClient.post('/auth/logout');
+  } catch {
+    // Logout should still clear local session even if audit endpoint fails.
+  }
+  logout();
+}
+
 export function getAuthHeaders(): Record<string, string> {
   const token = getStoredToken();
   if (!token) {
