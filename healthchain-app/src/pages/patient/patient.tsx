@@ -113,13 +113,6 @@ const PatientDashboard: React.FC = () => {
 	const [doctorWalletInput, setDoctorWalletInput] = useState('');
 	const [registeringWithDoctor, setRegisteringWithDoctor] = useState(false);
 	const [doctorRegistrationError, setDoctorRegistrationError] = useState<string | null>(null);
-
-	const [showDoctorApply, setShowDoctorApply] = useState(false);
-	const [professionalId, setProfessionalId] = useState('');
-	const [requestedRole, setRequestedRole] = useState<'doctor' | 'verifier'>('doctor');
-	const [applyError, setApplyError] = useState<string | null>(null);
-	const [applySuccess, setApplySuccess] = useState<string | null>(null);
-	const [isApplying, setIsApplying] = useState(false);
 	const [qrLoadingForIssuedAt, setQrLoadingForIssuedAt] = useState<string | null>(null);
 	const [qrError, setQrError] = useState<string | null>(null);
 	const [qrSession, setQrSession] = useState<QrSession | null>(null);
@@ -566,52 +559,6 @@ const PatientDashboard: React.FC = () => {
 			setProfileError(detail);
 		} finally {
 			setSavingProfile(false);
-		}
-	};
-
-	const applyForDoctorAccess = async (event: React.FormEvent) => {
-		event.preventDefault();
-		if (isApplying) return;
-
-		try {
-			setIsApplying(true);
-			setApplyError(null);
-			setApplySuccess(null);
-
-			if (!window.ethereum) {
-				setApplyError('MetaMask is required to submit a verified doctor-access application.');
-				return;
-			}
-
-			if (!professionalId.trim()) {
-				setApplyError('Professional ID is required.');
-				return;
-			}
-
-			const provider = new ethers.BrowserProvider(window.ethereum);
-			await provider.send('eth_requestAccounts', []);
-			const signer = await provider.getSigner();
-			const address = await signer.getAddress();
-			const did = localStorage.getItem('hc_did') || '';
-			const message = `Doctor access application for ${address} at ${new Date().toISOString()}`;
-			const signature = await signer.signMessage(message);
-
-			await apiClient.post('http://localhost:3001/auth/professional/access', {
-				address,
-				did,
-				professionalId: professionalId.trim(),
-				requestedRole,
-				message,
-				signature,
-			});
-
-			setApplySuccess(`Professional access approved. Your ${requestedRole} role is now active. Log in again to open the ${requestedRole} dashboard.`);
-			setProfessionalId('');
-		} catch (error: any) {
-			const details = error?.response?.data?.details || error?.response?.data?.error;
-			setApplyError(details || 'Professional access request failed. Please verify your Professional ID and wallet.');
-		} finally {
-			setIsApplying(false);
 		}
 	};
 
@@ -1074,43 +1021,6 @@ const PatientDashboard: React.FC = () => {
 					</div>
 				</div>
 			) : null}
-
-			<section className="doctor-apply-card">
-				<h2>Professional Access</h2>
-				<p>
-					Apply as doctor or verifier using your Professional ID from the whitelist.
-				</p>
-				<button className="btn request" onClick={() => setShowDoctorApply(prev => !prev)}>
-					{showDoctorApply ? 'Hide Professional Access Form' : 'Apply for Professional Access'}
-				</button>
-
-				{showDoctorApply ? (
-					<form className="doctor-apply-form" onSubmit={applyForDoctorAccess}>
-						<label htmlFor="professionalId">Medical license or Professional ID</label>
-						<input
-							id="professionalId"
-							type="text"
-							value={professionalId}
-							onChange={(event) => setProfessionalId(event.target.value)}
-							placeholder="e.g. MOH-123456"
-							required
-						/>
-
-						<label htmlFor="requestedRole">Requested role</label>
-						<select id="requestedRole" value={requestedRole} onChange={(event) => setRequestedRole(event.target.value as 'doctor' | 'verifier')}>
-							<option value="doctor">Doctor</option>
-							<option value="verifier">Verifier</option>
-						</select>
-
-						{applyError ? <div className="doctor-apply-error">{applyError}</div> : null}
-						{applySuccess ? <div className="doctor-apply-success">{applySuccess}</div> : null}
-
-						<button type="submit" className="btn request" disabled={isApplying}>
-							{isApplying ? 'Verifying credential...' : 'Submit Doctor Access Application'}
-						</button>
-					</form>
-				) : null}
-			</section>
 
 			<footer className="patient-footer">
 				<small>HealthChain • Patient portal</small>

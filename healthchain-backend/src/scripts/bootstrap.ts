@@ -56,7 +56,7 @@ function runCommand(
 async function bootstrap() {
   console.log('╔════════════════════════════════════════════════════════╗')
   console.log('║  HealthChain Local Bootstrap Flow                      ║')
-  console.log('║  (Clean State → Deploy Contract → Start Backend)       ║')
+  console.log('║  (Reset Runtime Data → Deploy Contract → Start Backend)║')
   console.log('╚════════════════════════════════════════════════════════╝')
 
   // Step 1: Reset local state
@@ -85,25 +85,12 @@ async function bootstrap() {
     process.exit(1)
   }
 
-  // Step 3: Backend contract preflight
-  const preflightResult = await runCommand(
-    npmCmd,
-    ['run', 'preflight:contract'],
-    backendRoot,
-    'Step 3: Backend Contract Preflight'
-  )
-
-  if (!preflightResult.success) {
-    console.error('\n✗ Bootstrap failed at backend preflight step')
-    process.exit(1)
-  }
-
-  // Step 4: Auto-fund discovered wallets for local testing
+  // Step 3: Auto-fund discovered wallets for local testing
   const fundWalletsResult = await runCommand(
     npmCmd,
     ['run', 'fund:wallets'],
     backendRoot,
-    'Step 4: Auto-Fund Wallets'
+    'Step 3: Auto-Fund Wallets'
   )
 
   if (!fundWalletsResult.success) {
@@ -111,8 +98,8 @@ async function bootstrap() {
     process.exit(1)
   }
 
-  // Step 5: Start backend
-  console.log('\n[Step 5: Start Backend Service] Starting server on port 3001...')
+  // Step 4: Start backend
+  console.log('\n[Step 4: Start Backend Service] Starting server on port 3001...')
   const backendStart = spawn(npmCmd, ['run', 'dev'], {
     cwd: backendRoot,
     stdio: 'inherit',
@@ -120,7 +107,7 @@ async function bootstrap() {
   })
 
   backendStart.on('error', (error) => {
-    console.error('[Step 3] Error:', error.message)
+    console.error('[Step 4] Error:', error.message)
     process.exit(1)
   })
 

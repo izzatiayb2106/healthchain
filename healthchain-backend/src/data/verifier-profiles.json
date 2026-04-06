@@ -1,0 +1,16 @@
+{
+  "profiles": [
+    {
+      "did": "did:ethr:hardhat:0x026f882cda54f50ceed5a89714374da4680ce3166ed33b4e2c67c4f3f242aded8b",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "fullName": "Amina Rahman",
+      "professionalId": "MOH-123455",
+      "specialty": "Border Control Inspection",
+      "licenseType": "Immigration Officer",
+      "legalName": "Amina Rahman",
+      "legalNameVerified": true,
+      "createdAt": "2026-04-06T14:05:12.145Z",
+      "updatedAt": "2026-04-06T14:27:27.248Z"
+    }
+  ]
+}

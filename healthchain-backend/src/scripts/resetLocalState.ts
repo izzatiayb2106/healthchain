@@ -13,10 +13,7 @@ const resetTargets: ResetTarget[] = [
     relativePath: 'hybrid-credentials.json',
     payload: { records: [] },
   },
-  {
-    relativePath: 'credential-qr-sessions.json',
-    payload: { sessions: [] },
-  },
+  
 ]
 
 function writeJsonFile(filePath: string, payload: unknown): void {
@@ -25,7 +22,7 @@ function writeJsonFile(filePath: string, payload: unknown): void {
 }
 
 function run(): void {
-  console.log('Resetting local backend state files...')
+  console.log('Resetting selected backend runtime state files...')
 
   for (const target of resetTargets) {
     const absolutePath = path.join(dataDir, target.relativePath)
@@ -33,7 +30,7 @@ function run(): void {
     console.log(`- Reset ${target.relativePath}`)
   }
 
-  console.log('Done. Local JSON state has been cleared for a fresh Hardhat session.')
+  console.log('Done. Selected runtime JSON files were reset (identity/profile stores are preserved).')
 }
 
 run()

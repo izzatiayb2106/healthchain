@@ -12,6 +12,28 @@ type WalletSource = {
 
 const dataDir = path.resolve(__dirname, '..', 'data')
 
+const defaultFundingSourceFiles = [
+  'identity-mappings.json',
+  'doctor-profiles.json',
+  'verifier-profiles.json',
+  'patient-profiles.json',
+  'doctor-pending-patients.json',
+  'ministry-license-registry.json',
+]
+
+function resolveFundingSourceFiles(dirPath: string): string[] {
+  const configured = String(process.env.AUTO_FUND_FILES || '').trim()
+  const candidates = configured
+    ? configured
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : defaultFundingSourceFiles
+
+  const unique = Array.from(new Set(candidates))
+  return unique.filter((name) => fs.existsSync(path.join(dirPath, name)))
+}
+
 function readJson(filePath: string): unknown {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'))
 }
@@ -43,7 +65,14 @@ function collectWalletSources(node: unknown, sourcePrefix: string, sources: Wall
 
 function getWalletsFromDataDir(dirPath: string): Map<string, Set<string>> {
   const discovered = new Map<string, Set<string>>()
-  const files = fs.readdirSync(dirPath).filter((name) => name.toLowerCase().endsWith('.json'))
+  const files = resolveFundingSourceFiles(dirPath)
+
+  if (files.length === 0) {
+    console.log('[fund] No funding source files found in backend data directory.')
+    return discovered
+  }
+
+  console.log(`[fund] Scanning files: ${files.join(', ')}`)
 
   for (const fileName of files) {
     const absolutePath = path.join(dirPath, fileName)

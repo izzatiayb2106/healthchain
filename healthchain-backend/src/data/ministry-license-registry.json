@@ -1,7 +1,7 @@
 {
   "records": [
     {
-      "professionalId": "MOH-123456",
+      "professionalId": "MOH-123455",
       "fullName": "Amina Rahman",
       "licenseType": "Immigration Officer",
       "specialty": "Border Control Inspection",
@@ -12,10 +12,12 @@
     },
     {
       "professionalId": "MOH-223344",
-      "fullName": "Dr. Kelvin Tan",
+      "fullName": "Dr. Aiman Aizad",
       "licenseType": "Medical Practitioner",
       "specialty": "Family Medicine",
-      "status": "suspended"
+      "status": "active",
+       "validUntil": "2028-12-31",
+      "linkedWallet": ""
     },
     {
       "professionalId": "MOH-998877",

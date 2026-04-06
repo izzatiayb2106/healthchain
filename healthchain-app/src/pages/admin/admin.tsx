@@ -38,15 +38,6 @@ type AuditLogEntry = {
   metadata?: Record<string, unknown>;
 };
 
-type DoctorRequest = {
-  wallet: string;
-  did: string;
-  licenseUrl: string;
-  status: "pending" | "approved" | "rejected";
-  createdAt: string;
-  updatedAt: string;
-};
-
 const roleOptions: UserRole[] = ["pending", "patient", "doctor", "verifier", "admin"];
 const auditActionOptions: Array<AuditAction | ""> = [
   "",
@@ -62,9 +53,8 @@ const auditActionOptions: Array<AuditAction | ""> = [
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeSection, setActiveSection] = useState<"identity" | "doctor" | "audit">("identity");
+  const [activeSection, setActiveSection] = useState<"identity" | "audit">("identity");
   const [rows, setRows] = useState<IdentityMapping[]>([]);
-  const [doctorRequests, setDoctorRequests] = useState<DoctorRequest[]>([]);
   const [selectedRoleByWallet, setSelectedRoleByWallet] = useState<Record<string, UserRole>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [updatingWallet, setUpdatingWallet] = useState<string | null>(null);
@@ -91,9 +81,6 @@ const AdminDashboard: React.FC = () => {
         nextSelected[item.wallet] = item.role;
       });
       setSelectedRoleByWallet(nextSelected);
-
-      const doctorReqRes = await apiClient.get("/did/doctor/requests");
-      setDoctorRequests(doctorReqRes.data?.requests || []);
 
       await loadAuditLogs();
     } catch (err: any) {
@@ -160,21 +147,6 @@ const AdminDashboard: React.FC = () => {
     navigate("/login");
   };
 
-  const approveDoctor = async (wallet: string) => {
-    try {
-      setUpdatingWallet(wallet);
-      setError(null);
-      await apiClient.post(`/did/doctor/approve/${encodeURIComponent(wallet)}`);
-      await loadMappings();
-    } catch (err: any) {
-      console.error(err);
-      const message = err?.response?.data?.error || "Failed to approve doctor request";
-      setError(message);
-    } finally {
-      setUpdatingWallet(null);
-    }
-  };
-
   const lockUser = async (wallet: string) => {
     try {
       setUpdatingWallet(wallet);
@@ -200,21 +172,6 @@ const AdminDashboard: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       const message = err?.response?.data?.error || "Failed to unlock user";
-      setError(message);
-    } finally {
-      setUpdatingWallet(null);
-    }
-  };
-
-  const rejectDoctor = async (wallet: string) => {
-    try {
-      setUpdatingWallet(wallet);
-      setError(null);
-      await apiClient.post(`/did/doctor/reject/${encodeURIComponent(wallet)}`);
-      await loadMappings();
-    } catch (err: any) {
-      console.error(err);
-      const message = err?.response?.data?.error || "Failed to reject doctor request";
       setError(message);
     } finally {
       setUpdatingWallet(null);
@@ -256,15 +213,6 @@ const AdminDashboard: React.FC = () => {
             >
               <span className="sidebar-link-icon">IA</span>
               <span className="sidebar-link-label">Identity Access</span>
-            </button>
-            <button
-              className={`sidebar-link ${activeSection === "doctor" ? "active" : ""}`}
-              onClick={() => setActiveSection("doctor")}
-              title="Doctor License Review"
-              aria-label="Doctor License Review"
-            >
-              <span className="sidebar-link-icon">DR</span>
-              <span className="sidebar-link-label">Doctor License Review</span>
             </button>
             <button
               className={`sidebar-link ${activeSection === "audit" ? "active" : ""}`}
@@ -375,51 +323,6 @@ const AdminDashboard: React.FC = () => {
                             {updatingWallet === row.wallet ? "Working..." : "Lock"}
                           </button>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        ) : null}
-
-        {activeSection === "doctor" ? (
-        <h2 className="section-title">Doctor License Review</h2>
-        ) : null}
-        {activeSection === "doctor" ? (
-        <div className="admin-table-wrap">
-          {doctorRequests.length === 0 && !isLoading ? (
-            <div className="empty">No doctor requests found.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Wallet</th>
-                  <th>DID</th>
-                  <th>License</th>
-                  <th>Status</th>
-                  <th>Submitted</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {doctorRequests.map((req) => (
-                  <tr key={req.wallet}>
-                    <td className="wallet" title={req.wallet}>{req.wallet}</td>
-                    <td className="did" title={req.did}>{req.did}</td>
-                    <td><a href={req.licenseUrl} target="_blank" rel="noreferrer">View license</a></td>
-                    <td><span className={`badge ${req.status}`}>{req.status}</span></td>
-                    <td>{new Date(req.createdAt).toLocaleString()}</td>
-                    <td>
-                      <div className="role-form">
-                        <button onClick={() => approveDoctor(req.wallet)} disabled={updatingWallet === req.wallet || req.status !== "pending"}>
-                          Approve
-                        </button>
-                        <button onClick={() => rejectDoctor(req.wallet)} disabled={updatingWallet === req.wallet || req.status !== "pending"}>
-                          Reject
-                        </button>
                       </div>
                     </td>
                   </tr>

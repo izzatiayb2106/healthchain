@@ -11,7 +11,7 @@
     "dev:clean": "npm run reset:local-state",
     "preflight:contract": "ts-node src/scripts/contractPreflight.ts",
     "bootstrap": "ts-node src/scripts/bootstrap.ts",
-    "bootstrap:safe": "ts-node src/scripts/bootstrap.ts"
+    "bootstrap:safe": "npm run bootstrap"
   },
   "keywords": [],
   "author": "",

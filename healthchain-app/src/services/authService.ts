@@ -34,12 +34,15 @@ export function getStoredDid(): string | null {
 export async function loginWithJWT(
   address: string,
   signature: string,
-  message: string
+  message: string,
+  professionalId?: string
 ): Promise<AuthResponse> {
+  const trimmedProfessionalId = String(professionalId || '').trim();
   const response = await axios.post(`${API_BASE}/auth/login-jwt`, {
     address,
     signature,
     message,
+    professionalId: trimmedProfessionalId || undefined,
   });
 
   const { token, role, did } = response.data;

@@ -1,6 +1,733 @@
 {
   "logs": [
     {
+      "id": "1775485647279-ui0boyn",
+      "timestamp": "2026-04-06T14:27:27.279Z",
+      "action": "login",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x026f882cda54f50ceed5a89714374da4680ce3166ed33b4e2c67c4f3f242aded8b",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775485631865-5i8ubdg",
+      "timestamp": "2026-04-06T14:27:11.865Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775485619793-hkh2crq",
+      "timestamp": "2026-04-06T14:26:59.793Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775485224496-0xnmrap",
+      "timestamp": "2026-04-06T14:20:24.496Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x026f882cda54f50ceed5a89714374da4680ce3166ed33b4e2c67c4f3f242aded8b",
+      "status": "failed",
+      "details": "Hybrid credential verification failed",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmU4yVxE5dbSkfEZCCRfGqa8e1uHrL7iEshDyaH767JN43",
+        "payloadHash": "0x8e85b342889aec9c287c78f25361fd14ece79ce98806bbfaf7a802aac26307a7"
+      }
+    },
+    {
+      "id": "1775485200283-x9snrgb",
+      "timestamp": "2026-04-06T14:20:00.283Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775485192099-56dmql5",
+      "timestamp": "2026-04-06T14:19:52.099Z",
+      "action": "logout",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775484994281-9msxbin",
+      "timestamp": "2026-04-06T14:16:34.281Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x026f882cda54f50ceed5a89714374da4680ce3166ed33b4e2c67c4f3f242aded8b",
+      "status": "success",
+      "details": "Hybrid credential verification succeeded",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmU4yVxE5dbSkfEZCCRfGqa8e1uHrL7iEshDyaH767JN43",
+        "payloadHash": "0x8e85b342889aec9c287c78f25361fd14ece79ce98806bbfaf7a802aac26307a0"
+      }
+    },
+    {
+      "id": "1775484976469-w64b256",
+      "timestamp": "2026-04-06T14:16:16.469Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "metadata": {
+        "patientWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "patientDid": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+        "cid": "QmU4yVxE5dbSkfEZCCRfGqa8e1uHrL7iEshDyaH767JN43",
+        "payloadHash": "0x8e85b342889aec9c287c78f25361fd14ece79ce98806bbfaf7a802aac26307a0"
+      }
+    },
+    {
+      "id": "1775484922292-b7da9fr",
+      "timestamp": "2026-04-06T14:15:22.292Z",
+      "action": "login",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x036786def22cbff305045252a72836cebde12f5bbcd9f781e3e4ce11ea6ea99ab0",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775484917924-oocz83l",
+      "timestamp": "2026-04-06T14:15:17.924Z",
+      "action": "logout",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x036786def22cbff305045252a72836cebde12f5bbcd9f781e3e4ce11ea6ea99ab0",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775484312186-uxkgixk",
+      "timestamp": "2026-04-06T14:05:12.186Z",
+      "action": "login",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x026f882cda54f50ceed5a89714374da4680ce3166ed33b4e2c67c4f3f242aded8b",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775484277942-481e1jq",
+      "timestamp": "2026-04-06T14:04:37.942Z",
+      "action": "logout",
+      "role": "patient",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x026f882cda54f50ceed5a89714374da4680ce3166ed33b4e2c67c4f3f242aded8b",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775484273535-6vkghq1",
+      "timestamp": "2026-04-06T14:04:33.535Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x026f882cda54f50ceed5a89714374da4680ce3166ed33b4e2c67c4f3f242aded8b",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775483034404-5wo80pb",
+      "timestamp": "2026-04-06T13:43:54.404Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775483004947-15i0rj3",
+      "timestamp": "2026-04-06T13:43:24.947Z",
+      "action": "login",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x036786def22cbff305045252a72836cebde12f5bbcd9f781e3e4ce11ea6ea99ab0",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775483000093-m46s2i6",
+      "timestamp": "2026-04-06T13:43:20.093Z",
+      "action": "logout",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775482800349-3cgbk0w",
+      "timestamp": "2026-04-06T13:40:00.349Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775468700223-uazl42q",
+      "timestamp": "2026-04-06T09:45:00.223Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (QmcP2AhL6uokHADnGbaS2CxWTDRaM1fUDdgMiDGfDkAADK)",
+      "metadata": {
+        "cid": "QmcP2AhL6uokHADnGbaS2CxWTDRaM1fUDdgMiDGfDkAADK",
+        "recordId": "2",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775468601377-cafso5w",
+      "timestamp": "2026-04-06T09:43:21.377Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x0237cd7bd3bdf58e61843d92bb18511bc642f17443c98511983c19014d37966732",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN)",
+      "metadata": {
+        "cid": "QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN",
+        "recordId": "1",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775468523068-f20xkcf",
+      "timestamp": "2026-04-06T09:42:03.068Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "failed",
+      "details": "Hybrid credential verification failed",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN",
+        "payloadHash": "0x82236cd39c97597ae28f71f31ad4c28041c9cc9876ec9c7b00d0697ecb92dc80"
+      }
+    },
+    {
+      "id": "1775468497441-iy7n2du",
+      "timestamp": "2026-04-06T09:41:37.442Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "Hybrid credential verification succeeded",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN",
+        "payloadHash": "0x82236cd39c97597ae28f71f31ad4c28041c9cc9876ec9c7b00d0697ecb92dc86"
+      }
+    },
+    {
+      "id": "1775463514599-pv4vcl7",
+      "timestamp": "2026-04-06T08:18:34.600Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "Hybrid credential verification succeeded",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN",
+        "payloadHash": "0x82236cd39c97597ae28f71f31ad4c28041c9cc9876ec9c7b00d0697ecb92dc86"
+      }
+    },
+    {
+      "id": "1775463496338-gxof21y",
+      "timestamp": "2026-04-06T08:18:16.338Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "Hybrid credential verification succeeded",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN",
+        "payloadHash": "0x82236cd39c97597ae28f71f31ad4c28041c9cc9876ec9c7b00d0697ecb92dc86"
+      }
+    },
+    {
+      "id": "1775461303014-nerzs7y",
+      "timestamp": "2026-04-06T07:41:43.014Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "failed",
+      "details": "Hybrid credential verification failed",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN",
+        "payloadHash": "0x82236cd39c97597ae28f71f31ad4c28041c9cc9876ec9c7b00d0697ecb92dc88"
+      }
+    },
+    {
+      "id": "1775461280596-ihktl6f",
+      "timestamp": "2026-04-06T07:41:20.596Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "Hybrid credential verification succeeded",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN",
+        "payloadHash": "0x82236cd39c97597ae28f71f31ad4c28041c9cc9876ec9c7b00d0697ecb92dc86"
+      }
+    },
+    {
+      "id": "1775461260274-h14utdz",
+      "timestamp": "2026-04-06T07:41:00.274Z",
+      "action": "login",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775460848758-jxrgy8h",
+      "timestamp": "2026-04-06T07:34:08.758Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775460843110-2eu98o1",
+      "timestamp": "2026-04-06T07:34:03.110Z",
+      "action": "logout",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775452589230-hmbg6lw",
+      "timestamp": "2026-04-06T05:16:29.230Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (QmcP2AhL6uokHADnGbaS2CxWTDRaM1fUDdgMiDGfDkAADK)",
+      "metadata": {
+        "cid": "QmcP2AhL6uokHADnGbaS2CxWTDRaM1fUDdgMiDGfDkAADK",
+        "recordId": "2",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775452496144-wr9lmax",
+      "timestamp": "2026-04-06T05:14:56.144Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775450846542-hycqnt8",
+      "timestamp": "2026-04-06T04:47:26.542Z",
+      "action": "login",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775450769582-u2qh9e6",
+      "timestamp": "2026-04-06T04:46:09.582Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "metadata": {
+        "patientWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "patientDid": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+        "cid": "QmcP2AhL6uokHADnGbaS2CxWTDRaM1fUDdgMiDGfDkAADK",
+        "payloadHash": "0x2e5c3ff0e61903ef97f4737a2ff6ccf4e02ab569b613e35340a0e8cc2cd3e891"
+      }
+    },
+    {
+      "id": "1775450737178-zknb27b",
+      "timestamp": "2026-04-06T04:45:37.178Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "metadata": {
+        "patientWallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+        "patientDid": "did:ethr:hardhat:0x0237cd7bd3bdf58e61843d92bb18511bc642f17443c98511983c19014d37966732",
+        "cid": "QmVQ2aNdC5BcsF9yEvaGscDnEnRepSLC7tQNv2VSVqKcVN",
+        "payloadHash": "0x82236cd39c97597ae28f71f31ad4c28041c9cc9876ec9c7b00d0697ecb92dc86"
+      }
+    },
+    {
+      "id": "1775450198330-tpzbhm1",
+      "timestamp": "2026-04-06T04:36:38.331Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x0237cd7bd3bdf58e61843d92bb18511bc642f17443c98511983c19014d37966732",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775448675057-o9s2xay",
+      "timestamp": "2026-04-06T04:11:15.057Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775448526797-5uvqg4m",
+      "timestamp": "2026-04-06T04:08:46.797Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775448262297-zz44ssy",
+      "timestamp": "2026-04-06T04:04:22.297Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0x4ee7f12016b8bbe409b4aaa9b81f2d82bea41c1f",
+      "did": "did:ethr:hardhat:0x0251047e4c4df83e5e04910b2cd5248d81ebe5315c02d7857251fca98f055e009c",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775447710295-6guqhw1",
+      "timestamp": "2026-04-06T03:55:10.295Z",
+      "action": "logout",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775447544942-nyz034w",
+      "timestamp": "2026-04-06T03:52:24.942Z",
+      "action": "login",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775386370159-umtr2m4",
+      "timestamp": "2026-04-05T10:52:50.159Z",
+      "action": "logout",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775386365367-9db15ya",
+      "timestamp": "2026-04-05T10:52:45.367Z",
+      "action": "login",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775383572571-nohkiu7",
+      "timestamp": "2026-04-05T10:06:12.571Z",
+      "action": "logout",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775383570431-h4zjj0q",
+      "timestamp": "2026-04-05T10:06:10.431Z",
+      "action": "login",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775383523242-s2kanpr",
+      "timestamp": "2026-04-05T10:05:23.242Z",
+      "action": "logout",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775383236582-y791w4a",
+      "timestamp": "2026-04-05T10:00:36.582Z",
+      "action": "logout",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775382484116-9qlgm59",
+      "timestamp": "2026-04-05T09:48:04.117Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "Hybrid credential verification succeeded",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmNMXrNxegzrQ2d5pc4qSRF8EYACi6iYv9AC13cd1akZnE",
+        "payloadHash": "0xc9d5c437612017cf0365bf060499af1bf4e77296f8f339af2e3cae01da146e5e"
+      }
+    },
+    {
+      "id": "1775382478861-3j7g56s",
+      "timestamp": "2026-04-05T09:47:58.861Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "Hybrid credential verification succeeded",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmNMXrNxegzrQ2d5pc4qSRF8EYACi6iYv9AC13cd1akZnE",
+        "payloadHash": "0xc9d5c437612017cf0365bf060499af1bf4e77296f8f339af2e3cae01da146e5e"
+      }
+    },
+    {
+      "id": "1775382220937-xg00oku",
+      "timestamp": "2026-04-05T09:43:40.937Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "metadata": {
+        "patientWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "patientDid": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+        "cid": "QmfFHwZ2VNWFewZEdAoiASqanVYu4fedVNM9aZpJWQFZnQ",
+        "payloadHash": "0x3f664dbe7d295a471db7cfa2812e3e00e7431246ccff9fa9576f3e464ad1ded1"
+      }
+    },
+    {
+      "id": "1775382131630-ymianpc",
+      "timestamp": "2026-04-05T09:42:11.630Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775382120373-u38m6h2",
+      "timestamp": "2026-04-05T09:42:00.373Z",
+      "action": "unlock_user",
+      "role": "admin",
+      "wallet": "unknown",
+      "status": "success",
+      "details": "Unlocked 0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "metadata": {
+        "targetWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067"
+      }
+    },
+    {
+      "id": "1775382114045-4ogul1q",
+      "timestamp": "2026-04-05T09:41:54.045Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "failed",
+      "details": "Blocked login attempt from locked account"
+    },
+    {
+      "id": "1775382055248-2cokvop",
+      "timestamp": "2026-04-05T09:40:55.248Z",
+      "action": "lock_user",
+      "role": "admin",
+      "wallet": "unknown",
+      "status": "success",
+      "details": "Locked 0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "metadata": {
+        "targetWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "reason": "Locked by admin"
+      }
+    },
+    {
+      "id": "1775381998920-lai2dnw",
+      "timestamp": "2026-04-05T09:39:58.920Z",
+      "action": "login",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x031d908a3391128f14277fd4a7884290d3e88b57b755cd71ea28309d4866a1e3f7",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775381933302-zep3xqx",
+      "timestamp": "2026-04-05T09:38:53.302Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "failed",
+      "details": "Hybrid credential verification failed",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmNMXrNxegzrQ2d5pc4qSRF8EYACi6iYv9AC13cd1akZnm",
+        "payloadHash": "0xc9d5c437612017cf0365bf060499af1bf4e77296f8f339af2e3cae01da146e5e"
+      }
+    },
+    {
+      "id": "1775381882239-n16ex2w",
+      "timestamp": "2026-04-05T09:38:02.239Z",
+      "action": "verification",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "Hybrid credential verification succeeded",
+      "metadata": {
+        "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        "recordId": "1",
+        "cid": "QmNMXrNxegzrQ2d5pc4qSRF8EYACi6iYv9AC13cd1akZnE",
+        "payloadHash": "0xc9d5c437612017cf0365bf060499af1bf4e77296f8f339af2e3cae01da146e5e"
+      }
+    },
+    {
+      "id": "1775381852846-81maa4m",
+      "timestamp": "2026-04-05T09:37:32.846Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (QmNMXrNxegzrQ2d5pc4qSRF8EYACi6iYv9AC13cd1akZnE)",
+      "metadata": {
+        "cid": "QmNMXrNxegzrQ2d5pc4qSRF8EYACi6iYv9AC13cd1akZnE",
+        "recordId": "1",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775381838854-ysk2xov",
+      "timestamp": "2026-04-05T09:37:18.855Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "metadata": {
+        "patientWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "patientDid": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+        "cid": "QmNMXrNxegzrQ2d5pc4qSRF8EYACi6iYv9AC13cd1akZnE",
+        "payloadHash": "0xc9d5c437612017cf0365bf060499af1bf4e77296f8f339af2e3cae01da146e5e"
+      }
+    },
+    {
+      "id": "1775381328705-dnb64wr",
+      "timestamp": "2026-04-05T09:28:48.705Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x021814cbdef6bdc9a1c3ad6e30761952e397e6e096b7709e14f45db477d9f53d2f",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775381312945-pyqsvi9",
+      "timestamp": "2026-04-05T09:28:32.945Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x029f65a218ed5bd326cc08aaaa828f23368fc44e6ba4fcfa662cd5e2440cae101e",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775381284226-119gpkc",
+      "timestamp": "2026-04-05T09:28:04.226Z",
+      "action": "login",
+      "role": "verifier",
+      "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
+      "did": "did:ethr:hardhat:0x02918e8388c5ec501914fdc54f0ebaf10f08dee62700c122ba6e1e4185219c2794",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
       "id": "1775308056684-xlycefp",
       "timestamp": "2026-04-04T13:07:36.684Z",
       "action": "logout",

@@ -100,6 +100,101 @@
   margin-top: 8px;
 }
 
+.professional-access-card {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(157, 142, 199, 0.18);
+}
+
+.professional-access-toggle {
+  margin-top: 0 !important;
+}
+
+.professional-access-panel {
+  margin-top: 18px;
+  padding-top: 4px;
+}
+
+.professional-access-panel h2 {
+  margin: 0;
+  color: #2c253b;
+  font-size: 1.18rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.professional-access-panel h2::after {
+  content: '';
+  display: block;
+  width: 54px;
+  height: 3px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b4d3d9 0%, #bda6ce 50%, #9b8ec7 100%);
+}
+
+.professional-access-panel p {
+  margin: 12px 0 0;
+  color: rgba(44, 37, 59, 0.72);
+  line-height: 1.55;
+}
+
+.professional-access-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.professional-access-form label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #5d5674;
+}
+
+.professional-access-form input,
+.professional-access-form select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(157, 142, 199, 0.28);
+  border-radius: 14px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.9);
+  color: #2c253b;
+}
+
+.professional-access-form input:focus,
+.professional-access-form select:focus {
+  outline: none;
+  border-color: rgba(126, 116, 191, 0.84);
+  box-shadow: 0 0 0 4px rgba(180, 211, 217, 0.34);
+}
+
+.professional-access-error,
+.professional-access-success {
+  border-radius: 16px;
+  padding: 14px 16px;
+  line-height: 1.5;
+}
+
+.professional-access-error {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(174, 70, 86, 0.18);
+  color: #9e3547;
+}
+
+.professional-access-success {
+  background: rgba(180, 211, 217, 0.16);
+  border: 1px solid rgba(180, 211, 217, 0.32);
+  color: #2c253b;
+}
+
+.professional-access-form button {
+  margin-top: 6px;
+}
+
 .login-card button {
   width: 100%;
   margin-top: 28px;

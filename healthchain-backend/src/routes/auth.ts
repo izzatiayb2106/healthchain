@@ -2,7 +2,7 @@ import express from "express";
 import { ethers } from "ethers";
 import { ensureDidForWallet } from "../services/didService";
 import { getCaDid, getIdentityByDid, getIdentityByWallet, getSystemAdminWallet, setRole, upsertIdentity } from "../services/authServices";
-import { upsertDoctorProfile } from "../services/doctorProfileService";
+import { getDoctorProfileByDid, getVerifierProfileByDid, upsertDoctorProfile, upsertVerifierProfile } from "../services/doctorProfileService";
 import {
   canLicenseBeIssuedToWallet,
   getMinistryLicenseByProfessionalId,
@@ -84,6 +84,7 @@ export default function authRoutes(agent: any) {
   router.post("/login-jwt", async (req, res) => {
     try {
       const { address, signature, message } = req.body;
+      const professionalId = String(req.body?.professionalId || "").trim();
 
       if (!address || !signature || !message) {
         return res.status(400).json({ error: "address, signature, and message are required" });
@@ -114,6 +115,33 @@ export default function authRoutes(agent: any) {
         mapped = await setRole(mapped.wallet, resolvedRole);
       }
 
+      const normalizedRole = normalizeRole(mapped.role);
+      if (normalizedRole === "doctor" || normalizedRole === "verifier") {
+        if (!professionalId) {
+          return res.status(400).json({ error: "professionalId is required for professional login" });
+        }
+
+        const licenseRecord = await getMinistryLicenseByProfessionalId(professionalId);
+        if (!licenseRecord) {
+          return res.status(404).json({ error: "Professional ID not found in Ministry registry" });
+        }
+
+        if (licenseRecord.status !== "active") {
+          return res.status(400).json({ error: `License is not active (status: ${licenseRecord.status})` });
+        }
+
+        if (!canLicenseBeIssuedToWallet(licenseRecord, mapped.wallet)) {
+          return res.status(403).json({ error: "Professional ID is linked to a different wallet" });
+        }
+
+        const allowedRole = resolveProfessionalAccessRole(licenseRecord);
+        if (allowedRole !== normalizedRole) {
+          return res.status(403).json({
+            error: `This professional ID allows ${allowedRole} access, not ${normalizedRole}`,
+          });
+        }
+      }
+
       const patientCredentialIssued = false;
 
       if ((mapped as any)?.locked) {
@@ -133,7 +161,6 @@ export default function authRoutes(agent: any) {
 
       // Generate JWT token
       const { generateToken } = await import("../services/jwtService");
-      const normalizedRole = normalizeRole(mapped.role);
       const token = generateToken({
         wallet: mapped.wallet,
         did: mapped.did,
@@ -213,7 +240,16 @@ export default function authRoutes(agent: any) {
         return res.status(401).json({ error: "Invalid signature" });
       }
 
-      const identity = await getIdentityByWallet(address);
+      let identity = await getIdentityByWallet(address);
+      if (!identity || !identity.did) {
+        const ensured = await ensureDidForWallet(agent, address);
+        const did = String(ensured.identifier?.did || "").trim();
+        if (!did) {
+          return res.status(500).json({ error: "Failed to create DID mapping for this wallet" });
+        }
+        identity = await upsertIdentity(address, did, normalizeRole(identity?.role));
+      }
+
       if (!identity || !identity.did) {
         return res.status(404).json({ error: "No DID mapping found for this wallet" });
       }
@@ -251,9 +287,22 @@ export default function authRoutes(agent: any) {
         await upsertDoctorProfile({
           did: updated.did,
           wallet: updated.wallet,
+          displayName: licenseRecord.fullName,
+          specialty: licenseRecord.specialty,
           legalName: licenseRecord.fullName,
           legalNameVerified: Boolean(licenseRecord.fullName),
           professionalId: licenseRecord.professionalId,
+        });
+      } else {
+        await upsertVerifierProfile({
+          did: updated.did,
+          wallet: updated.wallet,
+          fullName: licenseRecord.fullName,
+          legalName: licenseRecord.fullName,
+          legalNameVerified: Boolean(licenseRecord.fullName),
+          professionalId: licenseRecord.professionalId,
+          specialty: licenseRecord.specialty,
+          licenseType: licenseRecord.licenseType,
         });
       }
 
@@ -305,20 +354,53 @@ export default function authRoutes(agent: any) {
         (entry) => String(entry.linkedWallet || "").trim().toLowerCase() === wallet,
       );
 
-      if (!record) {
+      const doctorProfile = role === "doctor" ? await getDoctorProfileByDid(String(user.did || "").trim()) : null;
+      const verifierProfile = role === "verifier" ? await getVerifierProfileByDid(String(user.did || "").trim()) : null;
+
+      if (!record && !doctorProfile && !verifierProfile) {
         return res.status(404).json({ error: "Professional profile not found for this wallet" });
       }
+
+      const fullName =
+        String(
+          doctorProfile?.displayName ||
+            doctorProfile?.legalName ||
+            verifierProfile?.fullName ||
+            verifierProfile?.legalName ||
+            record?.fullName ||
+            "",
+        ).trim() || "Unknown Professional";
+
+      const resolvedProfessionalId =
+        String(
+          doctorProfile?.professionalId ||
+            verifierProfile?.professionalId ||
+            record?.professionalId ||
+            "",
+        ).trim() || "N/A";
+
+      const specialty =
+        String(
+          doctorProfile?.specialty || verifierProfile?.specialty || record?.specialty || "",
+        ).trim();
+
+      const licenseType =
+        String(verifierProfile?.licenseType || record?.licenseType || "").trim();
+
+      const status = String(record?.status || "active").trim().toLowerCase();
+
+      const validUntil = String(record?.validUntil || "").trim();
 
       return res.json({
         success: true,
         profile: {
-          fullName: String(record.fullName || "").trim() || "Unknown Professional",
-          professionalId: String(record.professionalId || "").trim() || "N/A",
-          role: String(record.role || role).trim().toLowerCase(),
-          licenseType: String(record.licenseType || "").trim(),
-          specialty: String(record.specialty || "").trim(),
-          status: String(record.status || "").trim().toLowerCase(),
-          validUntil: String(record.validUntil || "").trim(),
+          fullName,
+          professionalId: resolvedProfessionalId,
+          role: String(record?.role || role).trim().toLowerCase(),
+          licenseType,
+          specialty,
+          status,
+          validUntil,
         },
       });
     } catch (err) {

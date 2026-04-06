@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import "./login.css";
 import { loginWithJWT } from "../../services/authService";
+import ProfessionalAccessForm from "../../components/ui/ProfessionalAccessForm";
 import healthchainLogo from "../../assets/healthchain.svg";
 
 declare global {
@@ -90,6 +91,8 @@ const Login: React.FC = () => {
         </button>
 
         {account && <p>Connected: {account}</p>}
+
+        <ProfessionalAccessForm />
       </div>
     </div>
   );

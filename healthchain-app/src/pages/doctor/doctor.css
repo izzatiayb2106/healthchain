@@ -22,8 +22,9 @@
 .doctor-dashboard {
 	position: relative;
 	overflow: hidden;
-	max-width: 1500px;
-	margin: 0px auto;
+	width: auto;
+	min-height: 100vh;
+	margin: 0 auto;
 	padding: 28px;
 	font-family: "Avenir Next", "Nunito Sans", "Segoe UI", sans-serif;
 	color: var(--doctor-ink);

@@ -285,14 +285,16 @@ const VerifierDashboard: React.FC = () => {
 					<article className={`claim-card ${hybridResult.valid ? 'approved' : ''}`}>
 						<div className="claim-main claim-main-column">
 							<h3 className="patient-name">Hybrid On-Chain Validation</h3>
-							<div><strong>Status:</strong> {hybridResult.statusText}</div>
+							<div className={hybridResult.valid ? 'verification-status verification-status-valid' : 'verification-status verification-status-failed'}>
+								<strong>Status:</strong> {hybridResult.statusText}
+							</div>
 							<div><strong>Record ID:</strong> {hybridResult.recordId}</div>
 							<div><strong>CID:</strong> {hybridResult.cid}</div>
 							<div><strong>Hash:</strong> {hybridResult.payloadHash}</div>
 							<div><strong>Contract:</strong> {hybridResult.contractAddress}</div>
 						</div>
 						<div className="claim-actions">
-							<span className="badge">{hybridResult.valid ? 'Verified' : 'Failed'}</span>
+							<span className={`badge ${hybridResult.valid ? 'badge-valid' : 'badge-failed'}`}>{hybridResult.valid ? 'Verified' : 'Failed'}</span>
 						</div>
 					</article>
 				</section>
