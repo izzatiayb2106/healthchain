@@ -12,6 +12,7 @@ import {
 import { registerSseConnection } from "../services/eventService";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 import { appendAuditLog } from "../services/auditLogService";
+import { fundWalletIfNeeded } from "../services/walletFundingService";
 
 const KNOWN_ROLES = new Set(["patient", "doctor", "verifier", "admin"]);
 
@@ -53,6 +54,9 @@ export default function authRoutes(agent: any) {
 
       const existing = await getIdentityByWallet(address);
       let mapped = await upsertIdentity(address, did, normalizeRole(existing?.role));
+      if (!existing) {
+        await fundWalletIfNeeded(mapped.wallet, "auth:metamask registration");
+      }
 
       const systemAdminWallet = await getSystemAdminWallet()
       if (systemAdminWallet && mapped.wallet === systemAdminWallet && mapped.role !== 'admin') {
@@ -102,6 +106,9 @@ export default function authRoutes(agent: any) {
 
       const existing = await getIdentityByWallet(address);
       let mapped = await upsertIdentity(address, did, normalizeRole(existing?.role));
+      if (!existing) {
+        await fundWalletIfNeeded(mapped.wallet, "auth:login-jwt registration");
+      }
 
       // Set admin if system admin wallet
       const systemAdminWallet = await getSystemAdminWallet();
@@ -241,6 +248,7 @@ export default function authRoutes(agent: any) {
       }
 
       let identity = await getIdentityByWallet(address);
+      const wasNewIdentity = !identity || !identity.did;
       if (!identity || !identity.did) {
         const ensured = await ensureDidForWallet(agent, address);
         const did = String(ensured.identifier?.did || "").trim();
@@ -304,6 +312,10 @@ export default function authRoutes(agent: any) {
           specialty: licenseRecord.specialty,
           licenseType: licenseRecord.licenseType,
         });
+      }
+
+      if (wasNewIdentity) {
+        await fundWalletIfNeeded(updated.wallet, "auth:professional-access registration");
       }
 
       return res.json({

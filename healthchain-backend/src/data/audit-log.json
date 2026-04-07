@@ -1,6 +1,295 @@
 {
   "logs": [
     {
+      "id": "1775550332607-zt2frpv",
+      "timestamp": "2026-04-07T08:25:32.607Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (QmPKyhW8aF7d2JmSngUhFVjMLTJvLggPUYe79iz3cNYbg7)",
+      "metadata": {
+        "cid": "QmPKyhW8aF7d2JmSngUhFVjMLTJvLggPUYe79iz3cNYbg7",
+        "recordId": "1",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775550321463-oe6t47l",
+      "timestamp": "2026-04-07T08:25:21.463Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "metadata": {
+        "patientWallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+        "patientDid": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+        "cid": "QmPKyhW8aF7d2JmSngUhFVjMLTJvLggPUYe79iz3cNYbg7",
+        "payloadHash": "0xa431d424700dbeba8a7375de4993b2b3af25a80ddccb3fb7fbc99ede4d8feff7"
+      }
+    },
+    {
+      "id": "1775550263564-ta2yt70",
+      "timestamp": "2026-04-07T08:24:23.564Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775550158364-ag5n9t3",
+      "timestamp": "2026-04-07T08:22:38.364Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775549709165-keo0n1a",
+      "timestamp": "2026-04-07T08:15:09.166Z",
+      "action": "logout",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x036786def22cbff305045252a72836cebde12f5bbcd9f781e3e4ce11ea6ea99ab0",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775549702613-1rfewb5",
+      "timestamp": "2026-04-07T08:15:02.613Z",
+      "action": "logout",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775549677451-co9vafu",
+      "timestamp": "2026-04-07T08:14:37.452Z",
+      "action": "logout",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775549566378-qwges83",
+      "timestamp": "2026-04-07T08:12:46.379Z",
+      "action": "logout",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775549548664-bi5rxck",
+      "timestamp": "2026-04-07T08:12:28.664Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775549500528-8gp8ll7",
+      "timestamp": "2026-04-07T08:11:40.528Z",
+      "action": "logout",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "User logout"
+    },
+    {
+      "id": "1775549377046-rhx3xr7",
+      "timestamp": "2026-04-07T08:09:37.046Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "metadata": {
+        "patientWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "patientDid": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+        "cid": "QmUd1ufaAgYFDxrxmP6quiiiHd63ZApKdYwaYbM4GKUNuT",
+        "payloadHash": "0x31c838822351409afd06767008c094f8a55ad0434952a068eb4a342bcecbd39c"
+      }
+    },
+    {
+      "id": "1775549319784-y9b8ldf",
+      "timestamp": "2026-04-07T08:08:39.784Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775549216703-j558wpz",
+      "timestamp": "2026-04-07T08:06:56.703Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775549146260-coeo4t2",
+      "timestamp": "2026-04-07T08:05:46.261Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775549070865-0626b2j",
+      "timestamp": "2026-04-07T08:04:30.865Z",
+      "action": "login",
+      "role": "admin",
+      "wallet": "0xc1e1b289929dde322de2fc9c8b002128e96da3a2",
+      "did": "did:ethr:hardhat:0x036786def22cbff305045252a72836cebde12f5bbcd9f781e3e4ce11ea6ea99ab0",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775486825418-ftfwtbi",
+      "timestamp": "2026-04-06T14:47:05.418Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (Qmct7pohq2LqwuhnTq5HiFS4FrcMpZweUzq2Md552p8RLf)",
+      "metadata": {
+        "cid": "Qmct7pohq2LqwuhnTq5HiFS4FrcMpZweUzq2Md552p8RLf",
+        "recordId": "1",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775486766878-54nkn0u",
+      "timestamp": "2026-04-06T14:46:06.878Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (Qmct7pohq2LqwuhnTq5HiFS4FrcMpZweUzq2Md552p8RLf)",
+      "metadata": {
+        "cid": "Qmct7pohq2LqwuhnTq5HiFS4FrcMpZweUzq2Md552p8RLf",
+        "recordId": "1",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775486607851-feeds07",
+      "timestamp": "2026-04-06T14:43:27.851Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (QmSv6UhLj5zxgYdANLc8HBXaiMHwYAM9HMUAifwZLJAXVh)",
+      "metadata": {
+        "cid": "QmSv6UhLj5zxgYdANLc8HBXaiMHwYAM9HMUAifwZLJAXVh",
+        "recordId": "2",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775486603322-u7ktpjd",
+      "timestamp": "2026-04-06T14:43:23.322Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "did": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775486531915-918rt7q",
+      "timestamp": "2026-04-06T14:42:11.915Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+      "metadata": {
+        "patientWallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
+        "patientDid": "did:ethr:hardhat:0x037891d730e4521479c39f36efc8f16867b95f883dd378d80142205a5eb2709b42",
+        "cid": "QmSv6UhLj5zxgYdANLc8HBXaiMHwYAM9HMUAifwZLJAXVh",
+        "payloadHash": "0xcd1b61aca3917d7af2dd7290742019b45aff51910626bbfd0d34df5bbf24b86e"
+      }
+    },
+    {
+      "id": "1775486486804-9snhbyd",
+      "timestamp": "2026-04-06T14:41:26.804Z",
+      "action": "credential_decryption",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "Fetched encrypted payload for decryption (Qmct7pohq2LqwuhnTq5HiFS4FrcMpZweUzq2Md552p8RLf)",
+      "metadata": {
+        "cid": "Qmct7pohq2LqwuhnTq5HiFS4FrcMpZweUzq2Md552p8RLf",
+        "recordId": "1",
+        "credentialType": "VaccinationCredential"
+      }
+    },
+    {
+      "id": "1775486464445-y2vncw4",
+      "timestamp": "2026-04-06T14:41:04.445Z",
+      "action": "credential_issuance",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "Issued VaccinationCredential to 0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "metadata": {
+        "patientWallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+        "patientDid": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+        "cid": "Qmct7pohq2LqwuhnTq5HiFS4FrcMpZweUzq2Md552p8RLf",
+        "payloadHash": "0x2aaf7427826297467ce2ddd27ff20fac2d205b58a3e63911a801275bb6346bb9"
+      }
+    },
+    {
+      "id": "1775486314501-ytnggnv",
+      "timestamp": "2026-04-06T14:38:34.501Z",
+      "action": "login",
+      "role": "doctor",
+      "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
+      "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
+      "id": "1775486236365-znv19ca",
+      "timestamp": "2026-04-06T14:37:16.365Z",
+      "action": "login",
+      "role": "patient",
+      "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
+      "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
+      "status": "success",
+      "details": "JWT login success"
+    },
+    {
       "id": "1775485647279-ui0boyn",
       "timestamp": "2026-04-06T14:27:27.279Z",
       "action": "login",

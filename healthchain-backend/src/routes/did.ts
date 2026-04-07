@@ -17,6 +17,7 @@ import {
 } from "../services/authServices";
 import { requireAdmin } from "../middleware/adminAuth";
 import { appendAuditLog, listAuditLogs } from "../services/auditLogService";
+import { fundWalletIfNeeded } from "../services/walletFundingService";
 
 export default function didRoutes(agent: any) {
   const router = express.Router();
@@ -24,8 +25,13 @@ export default function didRoutes(agent: any) {
 
   router.post("/create", async (req, res) => {
     try {
-      const ensured = await ensureDidForWallet(agent, String(req.body.address || ''))
-      await upsertIdentity(String(req.body.address || ''), String(ensured.identifier?.did || ''))
+      const address = String(req.body.address || '').trim()
+      const existing = await getIdentityByWallet(address)
+      const ensured = await ensureDidForWallet(agent, address)
+      const mapped = await upsertIdentity(address, String(ensured.identifier?.did || ''), existing?.role || 'pending')
+      if (!existing) {
+        await fundWalletIfNeeded(mapped.wallet, 'did:create registration')
+      }
 
       res.json(ensured.identifier);
     } catch (error) {
@@ -41,9 +47,12 @@ export default function didRoutes(agent: any) {
         return res.status(400).json({ error: "Address is required" });
       }
 
-      const ensured = await ensureDidForWallet(agent, address)
       const existing = await getIdentityByWallet(address)
+      const ensured = await ensureDidForWallet(agent, address)
       const mapped = await upsertIdentity(address, String(ensured.identifier?.did || ''), existing?.role || 'pending')
+      if (!existing) {
+        await fundWalletIfNeeded(mapped.wallet, 'did:ensure registration')
+      }
 
       return res.status(ensured.created ? 201 : 200).json({
         created: ensured.created,
@@ -172,11 +181,15 @@ export default function didRoutes(agent: any) {
         return res.status(400).json({ error: 'Address is required' })
       }
 
+      const existing = await getIdentityByWallet(address)
       const ensured = await ensureDidForWallet(agent, address)
       const did = String(ensured.identifier?.did || '')
       const mapped = await upsertIdentity(address, did, 'doctor')
       const roleUpdated = await setRole(mapped.wallet, 'doctor')
       await setCaDid(did)
+      if (!existing) {
+        await fundWalletIfNeeded(mapped.wallet, 'did:ca-register')
+      }
 
       res.json({
         caDid: did,
@@ -205,11 +218,16 @@ export default function didRoutes(agent: any) {
       if (!address) {
         return res.status(400).json({ error: 'Address is required' })
       }
+
+      const existing = await getIdentityByWallet(address)
       const ensured = await ensureDidForWallet(agent, address)
       const did = String(ensured.identifier?.did || '')
       await upsertIdentity(address, did, 'admin')
       await setRole(address, 'admin')
       const superadminWallet = await setSystemAdminWallet(address)
+      if (!existing) {
+        await fundWalletIfNeeded(address, 'did:system-admin-register')
+      }
       res.json({ superadminWallet, did, didCreated: ensured.created })
     } catch (error: any) {
       console.error(error)
@@ -226,10 +244,14 @@ export default function didRoutes(agent: any) {
         return res.status(400).json({ error: 'Address and licenseUrl are required' })
       }
 
+      const existing = await getIdentityByWallet(address)
       const ensured = await ensureDidForWallet(agent, address)
       const did = String(ensured.identifier?.did || '')
       await upsertIdentity(address, did, 'pending')
       const request = await createDoctorRequest(address, did, licenseUrl)
+      if (!existing) {
+        await fundWalletIfNeeded(address, 'did:doctor-register')
+      }
 
       res.status(201).json({ request, didCreated: ensured.created })
     } catch (error: any) {

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import dotenv from 'dotenv'
 import { ethers } from 'ethers'
+import { fundWalletIfNeeded } from '../services/walletFundingService'
 
 dotenv.config()
 
@@ -91,19 +92,6 @@ function getWalletsFromDataDir(dirPath: string): Map<string, Set<string>> {
 }
 
 async function main() {
-  const rpcUrl = String(process.env.RPC_URL || 'http://127.0.0.1:8545').trim()
-  const fundingPrivateKey = String(process.env.PRIVATE_KEY || '').trim()
-  const targetEth = String(process.env.AUTO_FUND_TARGET_ETH || '1000').trim()
-
-  if (!fundingPrivateKey) {
-    throw new Error('PRIVATE_KEY is required in .env for wallet auto-funding')
-  }
-
-  const provider = new ethers.JsonRpcProvider(rpcUrl)
-  const funder = new ethers.Wallet(fundingPrivateKey, provider)
-  const targetWei = ethers.parseEther(targetEth)
-  let nextNonce = await provider.getTransactionCount(funder.address, 'latest')
-
   const discovered = getWalletsFromDataDir(dataDir)
   if (discovered.size === 0) {
     console.log('[fund] No wallets discovered in backend data files. Nothing to fund.')
@@ -115,43 +103,22 @@ async function main() {
   let skippedCount = 0
 
   for (const [wallet, sourceSet] of discovered.entries()) {
-    const code = await provider.getCode(wallet)
-    if (code && code !== '0x') {
-      skippedCount += 1
-      console.log(`[fund] Skip ${wallet} because it is a contract address.`)
-      continue
-    }
+    const source = Array.from(sourceSet).join(', ')
+    const result = await fundWalletIfNeeded(wallet, source)
 
-    const balance = await provider.getBalance(wallet)
-    if (balance >= targetWei) {
-      skippedCount += 1
+    if (result.status === 'funded') {
+      fundedCount += 1
       console.log(
-        `[fund] Skip ${wallet} (balance ${ethers.formatEther(balance)} ETH >= target ${targetEth} ETH) ` +
-        `from ${Array.from(sourceSet).join(', ')}`
+        `[fund] Funded ${result.wallet} +${result.fundedEth} ETH from ${source} (tx: ${result.txHash}) -> new balance ${result.balanceAfter} ETH`
       )
       continue
     }
 
-    const topUpAmount = targetWei - balance
-    const tx = await funder.sendTransaction({
-      to: wallet,
-      value: topUpAmount,
-      nonce: nextNonce,
-    })
-    nextNonce += 1
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error(`Funding transaction reverted for ${wallet}. Tx hash: ${tx.hash}`)
-    }
-
-    fundedCount += 1
-    const updated = await provider.getBalance(wallet)
-    console.log(
-      `[fund] Funded ${wallet} +${ethers.formatEther(topUpAmount)} ETH (tx: ${tx.hash}) -> new balance ${ethers.formatEther(updated)} ETH`
-    )
+    skippedCount += 1
+    console.log(`[fund] Skip ${result.wallet} from ${source}: ${result.reason}`)
   }
 
-  console.log(`[fund] Completed. Funded ${fundedCount}, skipped ${skippedCount}. Target balance: ${targetEth} ETH.`)
+  console.log(`[fund] Completed. Funded ${fundedCount}, skipped ${skippedCount}.`)
 }
 
 main().catch((error) => {
