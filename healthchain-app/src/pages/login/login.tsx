@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ethers } from "ethers";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./login.css";
 import { loginWithJWT } from "../../services/authService";
 import ProfessionalAccessForm from "../../components/ui/ProfessionalAccessForm";
@@ -17,6 +17,14 @@ const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("error") === "access-denied") {
+      setError("You do not have access to this page.");
+    }
+  }, [location.search]);
 
   const routeByRole = (role: string) => {
     if (role === "doctor") return "/doctor";

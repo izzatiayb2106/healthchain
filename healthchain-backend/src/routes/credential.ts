@@ -264,6 +264,8 @@ export default function credentialRoutes(agent: any) {
         issuerDid,
         credentialType,
         issuedAt,
+        expirationDate: expiration.expirationDate,
+        expirationPolicy: expiration.expirationPolicy,
       });
 
       // Emit real-time event to patient and doctor for hybrid credential
@@ -620,18 +622,36 @@ export default function credentialRoutes(agent: any) {
         )
       );
 
+      const foundRecord = await getHybridCredentialByCid(payload.cid)
+      const expirationDate = String(foundRecord?.expirationDate || '').trim()
+      const isExpired = Boolean(
+        valid &&
+        expirationDate &&
+        !/^lifetime$/i.test(expirationDate) &&
+        Number.isFinite(Date.parse(expirationDate)) &&
+        Date.now() > Date.parse(expirationDate)
+      )
+
+      const verificationStatusText = !valid
+        ? 'Verification Failed'
+        : isExpired
+          ? 'Credential Expired'
+          : 'Verified Valid'
+
       await appendAuditLog({
         action: 'verification',
         role: 'verifier',
         wallet: verifierIdentity.wallet,
         did: verifierIdentity.did,
-        status: valid ? 'success' : 'failed',
-        details: valid ? 'Hybrid credential verification succeeded' : 'Hybrid credential verification failed',
+        status: valid && !isExpired ? 'success' : 'failed',
+        details: verificationStatusText,
         metadata: {
           contractAddress: payload.contractAddress,
           recordId: payload.recordId,
           cid: payload.cid,
           payloadHash: payload.payloadHash,
+          expirationDate: expirationDate || null,
+          isExpired,
         },
       });
 
@@ -639,12 +659,14 @@ export default function credentialRoutes(agent: any) {
         success: true,
         mode: "hybrid",
         valid,
-        statusText: valid ? "Verified Valid" : "Verification Failed",
+        expired: isExpired,
+        statusText: verificationStatusText,
         verifiedBy: verifierIdentity.did,
         contractAddress: payload.contractAddress,
         recordId: payload.recordId,
         cid: payload.cid,
         payloadHash: payload.payloadHash,
+        expirationDate: expirationDate || null,
       });
     } catch (error: any) {
       console.error(error);

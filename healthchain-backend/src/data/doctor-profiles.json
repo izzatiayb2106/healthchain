@@ -1,17 +1,30 @@
 {
   "profiles": [
     {
+      "did": "did:ethr:hardhat:0x03b5447325e259775139399753c8a3225aed505d191ab91a15bed8f793d7d823e6",
+      "wallet": "0x4ee7f12016b8bbe409b4aaa9b81f2d82bea41c1f",
+      "displayName": "Aiman Aizad",
+      "specialty": "Family Medicine",
+      "hospitalOrClinic": "Hospital Pakar Sultanah Fatimah",
+      "professionalId": "MOH-223344",
+      "avatarUrl": "",
+      "legalName": "Aiman Aizad",
+      "legalNameVerified": true,
+      "createdAt": "2026-04-07T12:22:19.977Z",
+      "updatedAt": "2026-04-07T12:22:43.460Z"
+    },
+    {
       "did": "did:ethr:hardhat:0x03d900f4d9b6d3c1020ca79acdc66b364735f71f2f6d2ffa49196db5af652b2e47",
       "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
-      "displayName": "Dr. Omar Suleiman",
+      "displayName": "Omar Suleiman",
       "specialty": "Internal Medicine",
       "hospitalOrClinic": "Hospital Universiti Sains Malaysia",
       "professionalId": "MOH-998877",
       "avatarUrl": "",
-      "legalName": "Dr. Omar Suleiman",
+      "legalName": "Omar Suleiman",
       "legalNameVerified": true,
       "createdAt": "2026-04-06T13:40:21.767Z",
-      "updatedAt": "2026-04-07T08:24:23.508Z"
+      "updatedAt": "2026-04-07T13:27:23.538Z"
     }
   ]
 }

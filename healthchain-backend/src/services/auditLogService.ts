@@ -4,6 +4,7 @@ import path from 'path'
 export type AuditAction =
   | 'login'
   | 'logout'
+  | 'access_denied'
   | 'credential_issuance'
   | 'credential_decryption'
   | 'verification'

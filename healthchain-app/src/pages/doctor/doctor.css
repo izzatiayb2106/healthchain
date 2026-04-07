@@ -457,6 +457,7 @@
 	border-radius: 18px;
 	background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 234, 224, 0.72));
 	box-shadow: 0 12px 26px rgba(78, 65, 108, 0.08);
+	min-width: 0;
 }
 
 .doctor-credential-card h4 {
@@ -469,6 +470,9 @@
 .doctor-credential-card p {
 	margin: 4px 0;
 	color: #574f69;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+	white-space: normal;
 }
 
 .doctor-credential-card h4::after {

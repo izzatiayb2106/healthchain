@@ -12,8 +12,9 @@
     },
     {
       "professionalId": "MOH-223344",
-      "fullName": "Dr. Aiman Aizad",
+      "fullName": "Aiman Aizad",
       "licenseType": "Medical Practitioner",
+      "role":"doctor",
       "specialty": "Family Medicine",
       "status": "active",
        "validUntil": "2028-12-31",
@@ -21,7 +22,7 @@
     },
     {
       "professionalId": "MOH-998877",
-      "fullName": "Dr. Omar Suleiman",
+      "fullName": "Omar Suleiman",
       "licenseType": "Medical Practitioner",
       "specialty": "Internal Medicine",
       "status": "active",

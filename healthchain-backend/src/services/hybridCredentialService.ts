@@ -11,6 +11,8 @@ export type HybridCredentialRecord = {
   issuerDid: string
   credentialType: string
   issuedAt: string
+  expirationDate?: string | null
+  expirationPolicy?: string
   source?: 'live-issue' | 'migration-legacy'
   legacyIssuedAt?: string
   storageMode: 'local-fallback' | 'pinata'
@@ -209,6 +211,8 @@ export async function storeHybridEncryptedCredential(input: {
   issuerDid: string
   credentialType: string
   issuedAt: string
+  expirationDate?: string | null
+  expirationPolicy?: string
   source?: 'live-issue' | 'migration-legacy'
   legacyIssuedAt?: string
 }) {
@@ -247,6 +251,8 @@ export async function storeHybridEncryptedCredential(input: {
     issuerDid: String(input.issuerDid || '').trim(),
     credentialType: String(input.credentialType || '').trim() || 'VaccinationCredential',
     issuedAt: String(input.issuedAt || '').trim() || new Date().toISOString(),
+    expirationDate: String(input.expirationDate || '').trim() || null,
+    expirationPolicy: String(input.expirationPolicy || '').trim() || undefined,
     source: input.source || 'live-issue',
     legacyIssuedAt: String(input.legacyIssuedAt || '').trim() || undefined,
     storageMode,

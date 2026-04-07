@@ -30,6 +30,34 @@ async function resolveRoleByCredential(did: string, currentRole: string) {
   return normalizedCurrent;
 }
 
+async function resolveLoginRole(input: {
+  wallet: string;
+  currentRole?: string;
+  professionalId?: string;
+}) {
+  const currentRole = input.currentRole ? normalizeRole(input.currentRole) : 'pending';
+  const professionalId = String(input.professionalId || '').trim();
+
+  if (!professionalId) {
+    return currentRole;
+  }
+
+  const licenseRecord = await getMinistryLicenseByProfessionalId(professionalId);
+  if (!licenseRecord) {
+    throw new Error('Professional ID not found in Ministry registry');
+  }
+
+  if (licenseRecord.status !== 'active') {
+    throw new Error(`License is not active (status: ${licenseRecord.status})`);
+  }
+
+  if (!canLicenseBeIssuedToWallet(licenseRecord, input.wallet)) {
+    throw new Error('Professional ID is linked to a different wallet');
+  }
+
+  return resolveProfessionalAccessRole(licenseRecord);
+}
+
 export default function authRoutes(agent: any) {
   const router = express.Router();
 
@@ -42,6 +70,7 @@ export default function authRoutes(agent: any) {
   router.post("/metamask", async (req, res) => {
     try {
       const { address, signature, message } = req.body;
+      const professionalId = String(req.body?.professionalId || '').trim();
 
       const recovered = ethers.verifyMessage(message, signature);
 
@@ -53,7 +82,15 @@ export default function authRoutes(agent: any) {
       const did = String(ensured.identifier?.did || '');
 
       const existing = await getIdentityByWallet(address);
-      let mapped = await upsertIdentity(address, did, normalizeRole(existing?.role));
+      let mapped = await upsertIdentity(address, did, existing?.role || 'pending');
+      const resolvedRole = await resolveLoginRole({
+        wallet: mapped.wallet,
+        currentRole: mapped.role,
+        professionalId,
+      });
+      if (mapped.role !== resolvedRole) {
+        mapped = await setRole(mapped.wallet, resolvedRole);
+      }
       if (!existing) {
         await fundWalletIfNeeded(mapped.wallet, "auth:metamask registration");
       }
@@ -61,11 +98,6 @@ export default function authRoutes(agent: any) {
       const systemAdminWallet = await getSystemAdminWallet()
       if (systemAdminWallet && mapped.wallet === systemAdminWallet && mapped.role !== 'admin') {
         mapped = await setRole(mapped.wallet, 'admin')
-      }
-
-      const resolvedRole = await resolveRoleByCredential(mapped.did, mapped.role)
-      if (mapped.role !== resolvedRole) {
-        mapped = await setRole(mapped.wallet, resolvedRole)
       }
 
       const patientCredentialIssued = false
@@ -105,7 +137,7 @@ export default function authRoutes(agent: any) {
       const did = String(ensured.identifier?.did || "");
 
       const existing = await getIdentityByWallet(address);
-      let mapped = await upsertIdentity(address, did, normalizeRole(existing?.role));
+      let mapped = await upsertIdentity(address, did, existing?.role || 'pending');
       if (!existing) {
         await fundWalletIfNeeded(mapped.wallet, "auth:login-jwt registration");
       }
@@ -117,18 +149,23 @@ export default function authRoutes(agent: any) {
       }
 
       // Resolve role by credentials
-      const resolvedRole = await resolveRoleByCredential(mapped.did, mapped.role);
+      const resolvedRole = await resolveLoginRole({
+        wallet: mapped.wallet,
+        currentRole: mapped.role,
+        professionalId,
+      });
       if (mapped.role !== resolvedRole) {
         mapped = await setRole(mapped.wallet, resolvedRole);
       }
 
+      const licenseRecord = professionalId
+        ? await getMinistryLicenseByProfessionalId(professionalId)
+        : null;
       const normalizedRole = normalizeRole(mapped.role);
       if (normalizedRole === "doctor" || normalizedRole === "verifier") {
         if (!professionalId) {
           return res.status(400).json({ error: "professionalId is required for professional login" });
         }
-
-        const licenseRecord = await getMinistryLicenseByProfessionalId(professionalId);
         if (!licenseRecord) {
           return res.status(404).json({ error: "Professional ID not found in Ministry registry" });
         }
@@ -145,6 +182,29 @@ export default function authRoutes(agent: any) {
         if (allowedRole !== normalizedRole) {
           return res.status(403).json({
             error: `This professional ID allows ${allowedRole} access, not ${normalizedRole}`,
+          });
+        }
+
+        if (allowedRole === "doctor") {
+          await upsertDoctorProfile({
+            did: mapped.did,
+            wallet: mapped.wallet,
+            displayName: licenseRecord.fullName,
+            specialty: licenseRecord.specialty,
+            legalName: licenseRecord.fullName,
+            legalNameVerified: Boolean(licenseRecord.fullName),
+            professionalId: licenseRecord.professionalId,
+          });
+        } else {
+          await upsertVerifierProfile({
+            did: mapped.did,
+            wallet: mapped.wallet,
+            fullName: licenseRecord.fullName,
+            legalName: licenseRecord.fullName,
+            legalNameVerified: Boolean(licenseRecord.fullName),
+            professionalId: licenseRecord.professionalId,
+            specialty: licenseRecord.specialty,
+            licenseType: licenseRecord.licenseType,
           });
         }
       }
@@ -222,6 +282,38 @@ export default function authRoutes(agent: any) {
     }
   });
 
+  router.post("/access-denied", jwtAuthMiddleware, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.wallet) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const requiredRole = String(req.body.requiredRole || "").trim().toLowerCase();
+      const requestedPath = String(req.body.requestedPath || "").trim();
+
+      await appendAuditLog({
+        action: "access_denied",
+        role: normalizeRole(user.role),
+        wallet: user.wallet,
+        did: user.did,
+        status: "failed",
+        details: requestedPath
+          ? `Denied access to ${requestedPath}`
+          : "Denied access to protected route",
+        metadata: {
+          requiredRole: requiredRole || null,
+          requestedPath: requestedPath || null,
+        },
+      });
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Failed to record access denied event" });
+    }
+  });
+
   // Whitelist-only professional access for demo: professionalId + requestedRole
   router.post("/professional/access", async (req, res) => {
     try {
@@ -255,7 +347,7 @@ export default function authRoutes(agent: any) {
         if (!did) {
           return res.status(500).json({ error: "Failed to create DID mapping for this wallet" });
         }
-        identity = await upsertIdentity(address, did, normalizeRole(identity?.role));
+        identity = await upsertIdentity(address, did, identity?.role || 'pending');
       }
 
       if (!identity || !identity.did) {

@@ -72,6 +72,23 @@ export async function logoutWithAudit() {
   logout();
 }
 
+export async function denyRoleAccess(input: {
+  requiredRole: 'patient' | 'doctor' | 'verifier' | 'admin';
+  requestedPath: string;
+}) {
+  try {
+    await apiClient.post('/auth/access-denied', {
+      requiredRole: input.requiredRole,
+      requestedPath: input.requestedPath,
+    });
+  } catch {
+    // Denied-access logging should not block the redirect/logout flow.
+  }
+
+  await logoutWithAudit();
+  window.location.href = '/login?error=access-denied';
+}
+
 export function getAuthHeaders(): Record<string, string> {
   const token = getStoredToken();
   if (!token) {

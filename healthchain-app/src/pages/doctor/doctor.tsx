@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-import { apiClient, getStoredToken, logoutWithAudit } from '../../services/authService';
+import { apiClient, denyRoleAccess, getStoredToken, logoutWithAudit } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryContract, getCredentialRegistryAddress } from '../../blockchain/credentialRegistry';
 import './doctor.css';
 
@@ -449,7 +449,7 @@ const DoctorDashboard: React.FC = () => {
     useEffect(() => {
         const role = String(localStorage.getItem('hc_role') || '').toLowerCase();
         if (role !== 'doctor') {
-            window.location.href = '/login';
+            void denyRoleAccess({ requiredRole: 'doctor', requestedPath: '/doctor' });
             return;
         }
 
@@ -675,7 +675,7 @@ const DoctorDashboard: React.FC = () => {
                 ) : null}
                 {profile?.specialty ? <div><strong>Specialty:</strong> {profile.specialty}</div> : null}
                 {profile?.hospitalOrClinic ? <div><strong>Hospital/Clinic:</strong> {profile.hospitalOrClinic}</div> : null}
-                {profile?.legalNameVerified && profile?.legalName ? <div><strong>Verified legal name:</strong> {profile.legalName}</div> : null}
+                
                 {!showOnboarding && profile ? (
                     <div className="doctor-profile-actions">
                         <button className="btn" onClick={() => setShowEditProfile((prev) => !prev)}>
@@ -818,7 +818,7 @@ const DoctorDashboard: React.FC = () => {
                                         <p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
                                         <p><strong>Record ID:</strong> {entry.recordId || 'Pending'}</p>
                                         <p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
-                                        <p><strong>Tx Hash:</strong> {entry.txHash || 'Pending confirmation'}</p>
+                                        <p><strong>Payload Hash:</strong> {entry.payloadHash || 'Not available'}</p>
                                     </article>
                                 );
                             })}

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { QRCodeSVG } from 'qrcode.react';
-import { apiClient, getStoredToken, logoutWithAudit } from '../../services/authService';
+import { apiClient, denyRoleAccess, getStoredToken, logoutWithAudit } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryAddress, getCredentialRegistryContract, mapChainRecordTuple, type HybridChainRecord } from '../../blockchain/credentialRegistry';
 import './patient.css';
 
@@ -428,7 +428,7 @@ const PatientDashboard: React.FC = () => {
 	useEffect(() => {
 		const role = String(localStorage.getItem('hc_role') || '').toLowerCase();
 		if (role !== 'patient') {
-			window.location.href = '/login';
+			void denyRoleAccess({ requiredRole: 'patient', requestedPath: '/patient' });
 			return;
 		}
 
@@ -864,7 +864,7 @@ const PatientDashboard: React.FC = () => {
 									<>
 										<p><strong>Record ID:</strong> {entry.recordId || 'Pending'}</p>
 										<p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
-										<p><strong>Tx Hash:</strong> {entry.txHash || 'Pending confirmation'}</p>
+										<p><strong>Payload Hash:</strong> {entry.payloadHash || 'Not available'}</p>
 									</>
 								)}
 							</article>
@@ -882,13 +882,14 @@ const PatientDashboard: React.FC = () => {
 						</article>
 					))}
 
-					{hybridRecords.map((record) => (
+					{hybridRecords.map((record) => {
+						return (
 						<article key={`hybrid-${record.recordId}`} className="credential-card">
 							<h3>{record.credentialType}</h3>
 							
 							<p><strong>Record ID:</strong> {record.recordId}</p>
 							<p><strong>CID:</strong> {record.cid}</p>
-							<p><strong>Hash:</strong> {record.payloadHash}</p>
+							<p><strong>Payload Hash:</strong> {record.payloadHash}</p>
 							<p><strong>Issued:</strong> {new Date(record.issuedAt).toLocaleString()}</p>
 							<div className="scanner-actions">
 								<button
@@ -904,7 +905,8 @@ const PatientDashboard: React.FC = () => {
 								</button>
 							</div>
 						</article>
-					))}
+						);
+					})}
 				</div>
 			</section>
 

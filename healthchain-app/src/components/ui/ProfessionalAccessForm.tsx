@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
-import { apiClient, getStoredDid, loginWithJWT } from "../../services/authService";
+import { apiClient, loginWithJWT } from "../../services/authService";
 
 declare global {
   interface Window {
@@ -50,13 +50,11 @@ const ProfessionalAccessForm: React.FC = () => {
       await provider.send("eth_requestAccounts", []);
       const signer = await provider.getSigner();
       const address = await signer.getAddress();
-      const did = String(getStoredDid() || "").trim();
       const message = `Professional access application for ${address} at ${new Date().toISOString()}`;
       const signature = await signer.signMessage(message);
 
       await apiClient.post("/auth/professional/access", {
         address,
-        did,
         professionalId: trimmedProfessionalId,
         requestedRole,
         message,

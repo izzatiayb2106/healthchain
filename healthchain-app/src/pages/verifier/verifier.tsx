@@ -6,11 +6,13 @@ import './verifier.css';
 
 type HybridVerifyResult = {
 	valid: boolean;
+	expired: boolean;
 	statusText: string;
 	recordId: string;
 	cid: string;
 	payloadHash: string;
 	contractAddress: string;
+	expirationDate?: string | null;
 };
 
 type HybridQrPayload = {
@@ -127,15 +129,18 @@ const VerifierDashboard: React.FC = () => {
 			});
 
 			const valid = Boolean(response.data?.valid);
+			const expired = Boolean(response.data?.expired);
 			const statusText = String(response.data?.statusText || (valid ? 'Verified Valid' : 'Verification Failed'));
 
 			setHybridResult({
 				valid,
+				expired,
 				statusText,
 				recordId: String(response.data?.recordId || parsed.recordId),
 				cid: String(response.data?.cid || parsed.cid),
 				payloadHash: String(response.data?.payloadHash || parsed.payloadHash),
 				contractAddress: String(response.data?.contractAddress || parsed.contractAddress),
+				expirationDate: response.data?.expirationDate ? String(response.data.expirationDate) : null,
 			});
 		} catch (err: any) {
 			const detail =
@@ -282,19 +287,32 @@ const VerifierDashboard: React.FC = () => {
 
 			{hybridResult ? (
 				<section className="claim-list">
-					<article className={`claim-card ${hybridResult.valid ? 'approved' : ''}`}>
+					<article className={`claim-card ${hybridResult.valid && !hybridResult.expired ? 'approved' : ''}`}>
 						<div className="claim-main claim-main-column">
 							<h3 className="patient-name">Hybrid On-Chain Validation</h3>
-							<div className={hybridResult.valid ? 'verification-status verification-status-valid' : 'verification-status verification-status-failed'}>
+							<div
+								className={
+									hybridResult.valid
+										? (hybridResult.expired
+											? 'verification-status verification-status-failed'
+											: 'verification-status verification-status-valid')
+										: 'verification-status verification-status-failed'
+								}
+							>
 								<strong>Status:</strong> {hybridResult.statusText}
 							</div>
 							<div><strong>Record ID:</strong> {hybridResult.recordId}</div>
 							<div><strong>CID:</strong> {hybridResult.cid}</div>
 							<div><strong>Hash:</strong> {hybridResult.payloadHash}</div>
+							{hybridResult.expirationDate ? (
+								<div><strong>Expiration:</strong> {new Date(hybridResult.expirationDate).toLocaleString()}</div>
+							) : null}
 							<div><strong>Contract:</strong> {hybridResult.contractAddress}</div>
 						</div>
 						<div className="claim-actions">
-							<span className={`badge ${hybridResult.valid ? 'badge-valid' : 'badge-failed'}`}>{hybridResult.valid ? 'Verified' : 'Failed'}</span>
+							<span className={`badge ${hybridResult.valid && !hybridResult.expired ? 'badge-valid' : 'badge-failed'}`}>
+								{hybridResult.valid ? (hybridResult.expired ? 'Expired' : 'Verified') : 'Failed'}
+							</span>
 						</div>
 					</article>
 				</section>

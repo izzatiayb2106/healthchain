@@ -20,6 +20,7 @@ type IdentityMapping = {
 type AuditAction =
   | "login"
   | "logout"
+  | "access_denied"
   | "credential_issuance"
   | "credential_decryption"
   | "verification"
@@ -43,6 +44,7 @@ const auditActionOptions: Array<AuditAction | ""> = [
   "",
   "login",
   "logout",
+  "access_denied",
   "credential_issuance",
   "credential_decryption",
   "verification",
