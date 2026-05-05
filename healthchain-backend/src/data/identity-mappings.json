@@ -9,7 +9,7 @@
       "role": "admin",
       "locked": false,
       "createdAt": "2026-03-09T07:00:22.099Z",
-      "updatedAt": "2026-04-07T12:32:03.405Z"
+      "updatedAt": "2026-05-05T06:09:16.936Z"
     },
     {
       "wallet": "0xd2be44e64ec8840e43df16cdf1d1547bdeef5bee",
@@ -17,7 +17,7 @@
       "role": "doctor",
       "locked": false,
       "createdAt": "2026-03-09T07:14:29.012Z",
-      "updatedAt": "2026-04-07T13:27:23.532Z"
+      "updatedAt": "2026-04-08T01:52:44.720Z"
     },
     {
       "wallet": "0x56eb9bf3dff98ee246cd8d92cb26aae6d172a067",
@@ -25,7 +25,7 @@
       "role": "patient",
       "locked": false,
       "createdAt": "2026-03-17T07:47:52.343Z",
-      "updatedAt": "2026-04-07T08:06:56.684Z"
+      "updatedAt": "2026-04-08T01:49:27.270Z"
     },
     {
       "wallet": "0x40437801ecc8ac7f002043e164e3059d6ce21602",
@@ -33,23 +33,31 @@
       "role": "verifier",
       "locked": false,
       "createdAt": "2026-04-06T14:03:44.626Z",
-      "updatedAt": "2026-04-07T13:29:17.043Z"
+      "updatedAt": "2026-04-08T01:42:55.165Z"
+    },
+    {
+      "wallet": "0x079984a7e1c8e23835b8b15a5774fad3cb8503ba",
+      "did": "did:ethr:hardhat:0x0200b4218bb784b2f62518423d92119839db7b5c1d716720292a980a92e20ab79d",
+      "role": "patient",
+      "locked": false,
+      "createdAt": "2026-04-08T01:37:46.482Z",
+      "updatedAt": "2026-04-08T01:37:46.888Z"
     },
     {
       "wallet": "0x9858909bbc658687f20ba5ebb680330b32b4d149",
       "did": "did:ethr:hardhat:0x03dbd7d261cbc94bd21f53fb961f10b26b40946a9772b59c75bfcffbb32296761c",
       "role": "patient",
       "locked": false,
-      "createdAt": "2026-04-07T08:22:37.925Z",
-      "updatedAt": "2026-04-07T14:10:13.385Z"
+      "createdAt": "2026-04-08T01:39:28.895Z",
+      "updatedAt": "2026-04-08T01:39:28.951Z"
     },
     {
       "wallet": "0x4ee7f12016b8bbe409b4aaa9b81f2d82bea41c1f",
-      "did": "did:ethr:hardhat:0x03b5447325e259775139399753c8a3225aed505d191ab91a15bed8f793d7d823e6",
+      "did": "did:ethr:hardhat:0x02645af9b785b91068f1b95608b8bfbab8d925c42bb8335509849bc1f29b5920a7",
       "role": "doctor",
       "locked": false,
-      "createdAt": "2026-04-07T12:22:19.971Z",
-      "updatedAt": "2026-04-07T12:22:20.289Z"
+      "createdAt": "2026-04-08T01:40:39.076Z",
+      "updatedAt": "2026-04-08T01:40:39.173Z"
     }
   ]
 }
