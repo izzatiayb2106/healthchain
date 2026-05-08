@@ -262,9 +262,13 @@ export default function didRoutes(agent: any) {
 
   router.get('/doctor/requests', requireAdmin, async (_req, res) => {
     try {
-      const requests = await listDoctorRequests()
-      res.json({ total: requests.length, requests })
-    } catch (error) {
+      const requests = (await listDoctorRequests()) as any
+      res.json({ total: requests?.length || 0, requests: requests || [] })
+    } catch (error: any) {
+      // Return 501 if doctor requests not implemented
+      if (error?.message?.includes('migrated')) {
+        return res.status(501).json({ error: error.message })
+      }
       console.error(error)
       res.status(500).json({ error: 'Failed to load doctor requests' })
     }
@@ -273,7 +277,7 @@ export default function didRoutes(agent: any) {
   router.post('/doctor/approve/:wallet', requireAdmin, async (req, res) => {
     try {
       const wallet = String(req.params.wallet || '').trim()
-      const request = await getDoctorRequest(wallet)
+      const request = (await getDoctorRequest(wallet)) as any
       if (!request) {
         return res.status(404).json({ error: 'Doctor request not found' })
       }
@@ -286,8 +290,12 @@ export default function didRoutes(agent: any) {
       await setRole(wallet, 'doctor')
       await setDoctorRequestStatus(wallet, 'approved')
 
-      res.json({ success: true, wallet: request.wallet, did: request.did, caDid })
+      res.json({ success: true, wallet, did: 'did:pending', caDid })
     } catch (error: any) {
+      // Return 501 if doctor requests not implemented
+      if (error?.message?.includes('migrated')) {
+        return res.status(501).json({ error: error.message })
+      }
       console.error(error)
       res.status(500).json({ error: error?.message || 'Failed to approve doctor request' })
     }

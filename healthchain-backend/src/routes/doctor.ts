@@ -204,7 +204,7 @@ export default function doctorRoutes() {
   router.get("/pending-patients", async (req, res) => {
     try {
       const identity = await resolveDoctorIdentityByJWT(req);
-      const pendingPatients = getPendingPatientsByDoctorDid(identity.did);
+      const pendingPatients = await getPendingPatientsByDoctorDid(identity.did);
       return res.json({ success: true, pendingPatients: pendingPatients?.patients || [] });
     } catch (error: any) {
       const message = error?.message || "Failed to fetch pending patients";
@@ -222,7 +222,7 @@ export default function doctorRoutes() {
   router.get("/pending-patients/me", async (req, res) => {
     try {
       const identity = await resolveDoctorIdentityByJWT(req);
-      const pendingPatients = getPendingPatientsByDoctorDid(identity.did);
+      const pendingPatients = await getPendingPatientsByDoctorDid(identity.did);
       return res.json({ success: true, pendingPatients: pendingPatients?.patients || [] });
     } catch (error: any) {
       const message = error?.message || "Failed to fetch pending patients";
@@ -246,7 +246,7 @@ export default function doctorRoutes() {
         return res.status(400).json({ error: "patientWallet is required" });
       }
 
-      const updated = removePendingPatient(identity.did, patientWallet);
+      const updated = await removePendingPatient(identity.did, patientWallet);
       return res.json({ success: true, pendingPatients: updated?.patients || [] });
     } catch (error: any) {
       const message = error?.message || "Failed to remove pending patient";

@@ -1,62 +1,69 @@
-import { promises as fs } from 'fs'
-import path from 'path'
+import { getMinistryRegistryRepo } from '../db';
+import { MinistryRegistry as DBMinistryRegistry } from '../db/entities/MinistryRegistryEntity';
 
 export type MinistryLicenseRecord = {
+  id?: string
   professionalId: string
   fullName: string
   licenseType: string
   specialty: string
   role?: 'doctor' | 'verifier'
-  status: 'active' | 'suspended' | 'expired'
+  status: 'active' | 'inactive' | 'suspended' | 'expired'
   validUntil: string
   linkedWallet?: string
 }
-
-type MinistryRegistryStore = {
-  records: MinistryLicenseRecord[]
-}
-
-const dataDir = path.join(process.cwd(), 'src', 'data')
-const storePath = path.join(dataDir, 'ministry-license-registry.json')
 
 function normalizeWallet(wallet: string) {
   return String(wallet || '').trim().toLowerCase()
 }
 
-async function ensureStoreExists() {
-  await fs.mkdir(dataDir, { recursive: true })
-  try {
-    await fs.access(storePath)
-  } catch {
-    const initial: MinistryRegistryStore = { records: [] }
-    await fs.writeFile(storePath, JSON.stringify(initial, null, 2), 'utf8')
-  }
-}
+// Convert database entity to API format
+function dbMinistryToAPI(dbRecord: DBMinistryRegistry): MinistryLicenseRecord {
+  const validUntilDate =
+    dbRecord.validUntil instanceof Date
+      ? dbRecord.validUntil
+      : dbRecord.validUntil
+      ? new Date(String(dbRecord.validUntil))
+      : null
 
-async function readStore(): Promise<MinistryRegistryStore> {
-  await ensureStoreExists()
-  const raw = await fs.readFile(storePath, 'utf8')
-  const parsed = JSON.parse(raw) as MinistryRegistryStore
+  const validUntilStr = validUntilDate && !isNaN(validUntilDate.getTime())
+    ? validUntilDate.toISOString().split('T')[0]
+    : ''
+
   return {
-    records: Array.isArray(parsed.records) ? parsed.records : [],
+    id: dbRecord.id,
+    professionalId: dbRecord.professionalId,
+    fullName: dbRecord.fullName,
+    licenseType: dbRecord.licenseType,
+    specialty: dbRecord.specialty,
+    role: dbRecord.role,
+    status: dbRecord.status,
+    validUntil: validUntilStr,
+    linkedWallet: dbRecord.linkedWallet || undefined,
   }
 }
 
-export async function listMinistryLicenseRecords() {
-  const store = await readStore()
-  return store.records
+export async function listMinistryLicenseRecords(): Promise<MinistryLicenseRecord[]> {
+  const repo = getMinistryRegistryRepo()
+  const records = await repo.find()
+  return records.map(dbMinistryToAPI)
 }
 
-export async function getMinistryLicenseByProfessionalId(professionalId: string) {
-  const target = String(professionalId || '').trim().toLowerCase()
+export async function getMinistryLicenseByProfessionalId(professionalId: string): Promise<MinistryLicenseRecord | null> {
+  const target = String(professionalId || '').trim()
   if (!target) return null
-  const store = await readStore()
-  return (
-    store.records.find((record) => String(record.professionalId || '').trim().toLowerCase() === target) || null
-  )
+
+  const repo = getMinistryRegistryRepo()
+  // Perform case-insensitive search to match professional IDs regardless of casing
+  const record = await repo
+    .createQueryBuilder('m')
+    .where('LOWER(m.professionalId) = :pid', { pid: target.toLowerCase() })
+    .getOne()
+
+  return record ? dbMinistryToAPI(record) : null
 }
 
-export function canLicenseBeIssuedToWallet(record: MinistryLicenseRecord, wallet: string) {
+export function canLicenseBeIssuedToWallet(record: MinistryLicenseRecord, wallet: string): boolean {
   if (!record.linkedWallet) return true
   return normalizeWallet(record.linkedWallet) === normalizeWallet(wallet)
 }

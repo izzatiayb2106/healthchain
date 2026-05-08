@@ -1,7 +1,8 @@
-import { promises as fs } from "fs";
-import path from "path";
+import { getPatientProfileRepo } from '../db';
+import { PatientProfile as DBPatientProfile } from '../db/entities/PatientProfileEntity';
 
 export type PatientProfile = {
+  id?: string;
   did: string;
   wallet: string;
   fullName: string;
@@ -9,18 +10,11 @@ export type PatientProfile = {
   bloodType: string;
   phone: string;
   email: string;
-  emergencyContact: string;
+  emergencyContact?: string;
   encryptionPublicKey?: string;
   createdAt: string;
   updatedAt: string;
 };
-
-type PatientProfileStore = {
-  profiles: PatientProfile[];
-};
-
-const dataDir = path.join(process.cwd(), "src", "data");
-const storePath = path.join(dataDir, "patient-profiles.json");
 
 function normalizeWallet(wallet: string) {
   return String(wallet || "").trim().toLowerCase();
@@ -30,41 +24,42 @@ function normalizeDid(did: string) {
   return String(did || "").trim();
 }
 
-async function ensureStoreExists() {
-  await fs.mkdir(dataDir, { recursive: true });
-  try {
-    await fs.access(storePath);
-  } catch {
-    const initial: PatientProfileStore = { profiles: [] };
-    await fs.writeFile(storePath, JSON.stringify(initial, null, 2), "utf8");
-  }
-}
-
-async function readStore(): Promise<PatientProfileStore> {
-  await ensureStoreExists();
-  const raw = await fs.readFile(storePath, "utf8");
-  const parsed = JSON.parse(raw) as PatientProfileStore;
+// Convert database entity to API format
+function dbPatientProfileToAPI(dbProfile: DBPatientProfile): PatientProfile {
   return {
-    profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
+    id: dbProfile.id,
+    did: dbProfile.did,
+    wallet: dbProfile.wallet,
+    fullName: dbProfile.fullName,
+    dateOfBirth: dbProfile.dateOfBirth,
+    bloodType: dbProfile.bloodType,
+    phone: dbProfile.phone,
+    email: dbProfile.email,
+    emergencyContact: dbProfile.emergencyContact,
+    encryptionPublicKey: dbProfile.encryptionPublicKey,
+    createdAt: dbProfile.createdAt.toISOString(),
+    updatedAt: dbProfile.updatedAt.toISOString(),
   };
 }
 
-async function writeStore(store: PatientProfileStore) {
-  await fs.writeFile(storePath, JSON.stringify(store, null, 2), "utf8");
-}
-
-export async function getPatientProfileByDid(did: string) {
+export async function getPatientProfileByDid(did: string): Promise<PatientProfile | null> {
   const targetDid = normalizeDid(did);
   if (!targetDid) return null;
-  const store = await readStore();
-  return store.profiles.find((entry) => entry.did === targetDid) || null;
+
+  const repo = getPatientProfileRepo();
+  const profile = await repo.findOne({ where: { did: targetDid } });
+  
+  return profile ? dbPatientProfileToAPI(profile) : null;
 }
 
-export async function getPatientProfileByWallet(wallet: string) {
+export async function getPatientProfileByWallet(wallet: string): Promise<PatientProfile | null> {
   const targetWallet = normalizeWallet(wallet);
   if (!targetWallet) return null;
-  const store = await readStore();
-  return store.profiles.find((entry) => normalizeWallet(entry.wallet) === targetWallet) || null;
+
+  const repo = getPatientProfileRepo();
+  const profile = await repo.findOne({ where: { wallet: targetWallet } });
+  
+  return profile ? dbPatientProfileToAPI(profile) : null;
 }
 
 export async function upsertPatientProfile(input: {
@@ -77,46 +72,40 @@ export async function upsertPatientProfile(input: {
   email?: string;
   emergencyContact?: string;
   encryptionPublicKey?: string;
-}) {
+}): Promise<PatientProfile> {
   const did = normalizeDid(input.did);
   const wallet = normalizeWallet(input.wallet);
   if (!did || !wallet) {
     throw new Error("did and wallet are required");
   }
 
-  const store = await readStore();
-  const now = new Date().toISOString();
-  const existing = store.profiles.find((entry) => entry.did === did);
+  const repo = getPatientProfileRepo();
+  let profile = await repo.findOne({ where: { did } });
 
-  if (existing) {
-    existing.wallet = wallet;
-    if (typeof input.fullName === "string") existing.fullName = input.fullName.trim();
-    if (typeof input.dateOfBirth === "string") existing.dateOfBirth = input.dateOfBirth.trim();
-    if (typeof input.bloodType === "string") existing.bloodType = input.bloodType.trim();
-    if (typeof input.phone === "string") existing.phone = input.phone.trim();
-    if (typeof input.email === "string") existing.email = input.email.trim();
-    if (typeof input.emergencyContact === "string") existing.emergencyContact = input.emergencyContact.trim();
-    if (typeof input.encryptionPublicKey === "string") existing.encryptionPublicKey = input.encryptionPublicKey.trim();
-    existing.updatedAt = now;
-    await writeStore(store);
-    return existing;
+  if (profile) {
+    profile.wallet = wallet;
+    if (typeof input.fullName === "string") profile.fullName = input.fullName.trim();
+    if (typeof input.dateOfBirth === "string") profile.dateOfBirth = input.dateOfBirth.trim();
+    if (typeof input.bloodType === "string") profile.bloodType = input.bloodType.trim();
+    if (typeof input.phone === "string") profile.phone = input.phone.trim();
+    if (typeof input.email === "string") profile.email = input.email.trim();
+    if (typeof input.emergencyContact === "string") profile.emergencyContact = input.emergencyContact.trim();
+    if (typeof input.encryptionPublicKey === "string") profile.encryptionPublicKey = input.encryptionPublicKey.trim();
+    profile.updatedAt = new Date();
+  } else {
+    profile = repo.create({
+      did,
+      wallet,
+      fullName: String(input.fullName || "").trim(),
+      dateOfBirth: String(input.dateOfBirth || "").trim(),
+      bloodType: String(input.bloodType || "").trim(),
+      phone: String(input.phone || "").trim(),
+      email: String(input.email || "").trim(),
+      emergencyContact: String(input.emergencyContact || "").trim(),
+      encryptionPublicKey: String(input.encryptionPublicKey || "").trim(),
+    });
   }
 
-  const created: PatientProfile = {
-    did,
-    wallet,
-    fullName: String(input.fullName || "").trim(),
-    dateOfBirth: String(input.dateOfBirth || "").trim(),
-    bloodType: String(input.bloodType || "").trim(),
-    phone: String(input.phone || "").trim(),
-    email: String(input.email || "").trim(),
-    emergencyContact: String(input.emergencyContact || "").trim(),
-    encryptionPublicKey: String(input.encryptionPublicKey || "").trim(),
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  store.profiles.unshift(created);
-  await writeStore(store);
-  return created;
+  const saved = await repo.save(profile);
+  return dbPatientProfileToAPI(saved);
 }

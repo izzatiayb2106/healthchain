@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { getHybridCredentialRepo } from '../db'
+import { HybridCredential } from '../db/entities/HybridCredentialEntity'
 
 export type HybridCredentialRecord = {
   cid: string
@@ -23,14 +23,24 @@ export type HybridCredentialRecord = {
   finalizedAt?: string
 }
 
-type HybridCredentialStore = {
-  records: HybridCredentialRecord[]
+const PINATA_PIN_JSON_URL = 'https://api.pinata.cloud/pinning/pinJSONToIPFS'
+
+type PendingHybridCredentialDraft = {
+  encryptedCredentialHex: string
+  payloadHash: string
+  subjectDid: string
+  subjectWallet: string
+  issuerDid: string
+  credentialType: string
+  issuedAt: string
+  expirationDate?: string | null
+  expirationPolicy?: string
+  source?: 'live-issue' | 'migration-legacy'
+  legacyIssuedAt?: string
+  storageMode: HybridCredentialRecord['storageMode']
 }
 
-const dataDir = path.join(process.cwd(), 'src', 'data')
-const storePath = path.join(dataDir, 'hybrid-credentials.json')
-
-const PINATA_PIN_JSON_URL = 'https://api.pinata.cloud/pinning/pinJSONToIPFS'
+const pendingHybridCredentialDrafts = new Map<string, PendingHybridCredentialDraft>()
 
 function normalizeWallet(wallet: string) {
   return String(wallet || '').trim().toLowerCase()
@@ -177,29 +187,6 @@ async function fetchEncryptedPayloadFromPinata(cid: string) {
   return encryptedCredentialHex
 }
 
-async function ensureStoreExists() {
-  await fs.mkdir(dataDir, { recursive: true })
-  try {
-    await fs.access(storePath)
-  } catch {
-    const initial: HybridCredentialStore = { records: [] }
-    await fs.writeFile(storePath, JSON.stringify(initial, null, 2), 'utf8')
-  }
-}
-
-async function readStore(): Promise<HybridCredentialStore> {
-  await ensureStoreExists()
-  const raw = await fs.readFile(storePath, 'utf8')
-  const parsed = JSON.parse(raw) as HybridCredentialStore
-  return {
-    records: Array.isArray(parsed.records) ? parsed.records : [],
-  }
-}
-
-async function writeStore(store: HybridCredentialStore) {
-  await fs.writeFile(storePath, JSON.stringify(store, null, 2), 'utf8')
-}
-
 export function sha256Hex(input: string) {
   return `0x${createHash('sha256').update(input, 'utf8').digest('hex')}`
 }
@@ -242,35 +229,25 @@ export async function storeHybridEncryptedCredential(input: {
     }
   }
 
-  const record: HybridCredentialRecord = {
-    cid,
-    payloadHash,
+  pendingHybridCredentialDrafts.set(cid, {
     encryptedCredentialHex: storageMode === 'pinata' ? '' : encryptedCredentialHex,
+    payloadHash,
     subjectDid: String(input.subjectDid || '').trim(),
     subjectWallet: normalizeWallet(input.subjectWallet),
     issuerDid: String(input.issuerDid || '').trim(),
     credentialType: String(input.credentialType || '').trim() || 'VaccinationCredential',
     issuedAt: String(input.issuedAt || '').trim() || new Date().toISOString(),
-    expirationDate: String(input.expirationDate || '').trim() || null,
+    expirationDate: input.expirationDate ? String(input.expirationDate) : null,
     expirationPolicy: String(input.expirationPolicy || '').trim() || undefined,
     source: input.source || 'live-issue',
     legacyIssuedAt: String(input.legacyIssuedAt || '').trim() || undefined,
     storageMode,
-  }
-
-  const store = await readStore()
-  const existingIndex = store.records.findIndex((entry) => entry.cid === cid)
-  if (existingIndex >= 0) {
-    store.records[existingIndex] = { ...store.records[existingIndex], ...record }
-  } else {
-    store.records.unshift(record)
-  }
-  await writeStore(store)
+  })
 
   return {
     cid,
     payloadHash,
-    storageMode: record.storageMode,
+    storageMode,
   }
 }
 
@@ -286,27 +263,49 @@ export async function finalizeHybridCredential(input: {
     throw new Error('cid is required')
   }
 
-  const store = await readStore()
-  const found = store.records.find((entry) => entry.cid === cid)
-  if (!found) {
+  const repo = getHybridCredentialRepo()
+  const pendingDraft = pendingHybridCredentialDrafts.get(cid)
+  if (!pendingDraft) {
+    const existing = await repo.findOne({ where: { cid } })
+    if (existing && existing.finalizedAt) {
+      return dbToApi(existing)
+    }
     throw new Error('Hybrid credential record not found for cid')
   }
 
-  found.txHash = String(input.txHash || '').trim()
-  found.chainId = String(input.chainId || '').trim()
-  found.contractAddress = normalizeWallet(input.contractAddress)
-  found.recordId = String(input.recordId || '').trim()
-  found.finalizedAt = new Date().toISOString()
+  const saved = await repo.save(
+    repo.create({
+      cid,
+      payloadHash: pendingDraft.payloadHash,
+      encryptedCredentialHex: pendingDraft.encryptedCredentialHex,
+      subjectDid: pendingDraft.subjectDid,
+      subjectWallet: pendingDraft.subjectWallet,
+      issuerDid: pendingDraft.issuerDid,
+      credentialType: pendingDraft.credentialType,
+      issuedAt: new Date(pendingDraft.issuedAt),
+      expirationDate: pendingDraft.expirationDate ? new Date(pendingDraft.expirationDate) : null,
+      expirationPolicy: pendingDraft.expirationPolicy || null,
+      source: pendingDraft.source || null,
+      legacyIssuedAt: pendingDraft.legacyIssuedAt || null,
+      storageMode: pendingDraft.storageMode,
+      txHash: String(input.txHash || '').trim(),
+      chainId: String(input.chainId || '').trim(),
+      contractAddress: normalizeWallet(input.contractAddress),
+      recordId: String(input.recordId || '').trim(),
+      finalizedAt: new Date(),
+    })
+  )
 
-  await writeStore(store)
-  return found
+  pendingHybridCredentialDrafts.delete(cid)
+  return dbToApi(saved)
 }
 
-export async function getHybridCredentialByCid(cid: string) {
+export async function getHybridCredentialByCid(cid: string): Promise<HybridCredentialRecord | null> {
   const target = String(cid || '').trim()
   if (!target) return null
-  const store = await readStore()
-  const found = store.records.find((entry) => entry.cid === target) || null
+  
+  const repo = getHybridCredentialRepo()
+  const found = await repo.findOne({ where: { cid: target } })
   if (!found) return null
 
   console.log(`[GET_CID] Found record, storageMode: ${found.storageMode}, hasLocalEncryptedHex: ${!!found.encryptedCredentialHex}`);
@@ -317,7 +316,7 @@ export async function getHybridCredentialByCid(cid: string) {
       const encryptedCredentialHex = await fetchEncryptedPayloadFromPinata(found.cid)
       console.log(`[GET_CID] Successfully fetched from Pinata, hex length: ${encryptedCredentialHex.length}`);
       return {
-        ...found,
+        ...dbToApi(found),
         encryptedCredentialHex,
       }
     } catch (error: any) {
@@ -326,37 +325,63 @@ export async function getHybridCredentialByCid(cid: string) {
     }
   }
 
-  return found
+  return dbToApi(found)
 }
 
 export async function listHybridCredentialsBySubjectWallet(subjectWallet: string) {
   const target = normalizeWallet(subjectWallet)
   if (!target) return []
-  const store = await readStore()
-  return store.records.filter((entry) => entry.subjectWallet === target)
+  const repo = getHybridCredentialRepo()
+  const records = await repo.find({ where: { subjectWallet: target } })
+  return records.filter((entry) => Boolean(entry.finalizedAt)).map(dbToApi)
 }
 
 export async function listHybridCredentialsBySubjectDid(subjectDid: string) {
   const target = String(subjectDid || '').trim()
   if (!target) return []
-  const store = await readStore()
-  return store.records.filter((entry) => entry.subjectDid === target)
+  const repo = getHybridCredentialRepo()
+  const records = await repo.find({ where: { subjectDid: target } })
+  return records.filter((entry) => Boolean(entry.finalizedAt)).map(dbToApi)
 }
 
-export async function findHybridByLegacyReference(subjectDid: string, legacyIssuedAt: string, credentialType: string) {
+export async function findHybridByLegacyReference(subjectDid: string, legacyIssuedAt: string, credentialType: string): Promise<HybridCredentialRecord | null> {
   const targetSubject = String(subjectDid || '').trim()
   const targetIssuedAt = String(legacyIssuedAt || '').trim()
   const targetCredentialType = String(credentialType || '').trim()
   if (!targetSubject || !targetIssuedAt || !targetCredentialType) return null
 
-  const store = await readStore()
-  return (
-    store.records.find(
-      (entry) =>
-        entry.subjectDid === targetSubject &&
-        String(entry.legacyIssuedAt || '').trim() === targetIssuedAt &&
-        String(entry.credentialType || '').trim() === targetCredentialType,
-    ) || null
-  )
+  const repo = getHybridCredentialRepo()
+  const found = await repo.findOne({
+    where: {
+      subjectDid: targetSubject,
+      legacyIssuedAt: targetIssuedAt,
+      credentialType: targetCredentialType,
+    },
+  })
+  return found && found.finalizedAt ? dbToApi(found) : null
+}
+
+// Helper to convert DB entity to API record type
+function dbToApi(entity: HybridCredential): HybridCredentialRecord {
+  return {
+    cid: entity.cid,
+    payloadHash: entity.payloadHash,
+    encryptedCredentialHex: entity.encryptedCredentialHex,
+    subjectDid: entity.subjectDid,
+    subjectWallet: entity.subjectWallet,
+    issuerDid: entity.issuerDid,
+    credentialType: entity.credentialType,
+    issuedAt: entity.issuedAt.toISOString(),
+    expirationDate: entity.expirationDate ? entity.expirationDate.toISOString() : null,
+    expirationPolicy: entity.expirationPolicy || undefined,
+    source: entity.source as 'live-issue' | 'migration-legacy' | undefined,
+    legacyIssuedAt: entity.legacyIssuedAt || undefined,
+    storageMode: entity.storageMode as 'local-fallback' | 'pinata',
+    txHash: entity.txHash || undefined,
+    chainId: entity.chainId || undefined,
+    contractAddress: entity.contractAddress || undefined,
+    recordId: entity.recordId || undefined,
+    finalizedAt: entity.finalizedAt ? entity.finalizedAt.toISOString() : undefined,
+  }
 }
 

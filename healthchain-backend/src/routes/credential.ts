@@ -13,6 +13,7 @@ import {
   listHybridCredentialsBySubjectDid,
   storeHybridEncryptedCredential,
 } from "../services/hybridCredentialService";
+import { fundWalletIfNeeded } from "../services/walletFundingService";
 import { emitEventToWallet } from "../services/eventService";
 import { appendAuditLog } from "../services/auditLogService";
 
@@ -185,6 +186,8 @@ export default function credentialRoutes(agent: any) {
       if (doctorIdentity.role !== "doctor") {
         return res.status(403).json({ error: "Doctor role required to issue credentials" });
       }
+
+      await fundWalletIfNeeded(doctorIdentity.wallet, "credential:hybrid prepare");
 
       const subjectInput = String(req.body.subjectDid || req.body.subject || "").trim();
       if (!subjectInput) {

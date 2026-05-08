@@ -1,7 +1,5 @@
-import fs from "fs";
-import path from "path";
-
-const PENDING_PATIENTS_FILE = path.join(__dirname, "../data/doctor-pending-patients.json");
+import { getDoctorPatientRepo } from '../db';
+import { DoctorPatient } from '../db/entities';
 
 export interface PendingPatient {
   patientWallet: string;
@@ -16,70 +14,88 @@ export interface DoctorPendingPatients {
   updatedAt: string;
 }
 
-function ensureFile() {
-  if (!fs.existsSync(PENDING_PATIENTS_FILE)) {
-    fs.writeFileSync(PENDING_PATIENTS_FILE, JSON.stringify([], null, 2));
+function normalizeWallet(wallet: string) {
+  return String(wallet || "").trim().toLowerCase();
+}
+
+// Convert database records to the legacy interface format
+function formatDoctorPendingPatients(records: DoctorPatient[]): DoctorPendingPatients {
+  if (records.length === 0) {
+    throw new Error("No records found");
   }
+
+  const doctorDid = records[0].doctorDid;
+  const doctorWallet = records[0].doctorWallet;
+  const patients = records.map((r) => ({
+    patientWallet: r.patientWallet,
+    patientDid: r.patientDid,
+    addedAt: r.addedAt.toISOString(),
+  }));
+
+  const latestUpdate = records.reduce((latest, current) => {
+    return current.updatedAt > latest.updatedAt ? current : latest;
+  });
+
+  return {
+    doctorDid,
+    doctorWallet,
+    patients,
+    updatedAt: latestUpdate.updatedAt.toISOString(),
+  };
 }
 
-function readFile() {
-  ensureFile();
-  const data = fs.readFileSync(PENDING_PATIENTS_FILE, "utf8");
-  return JSON.parse(data) as DoctorPendingPatients[];
+export async function getPendingPatientsByDoctorDid(doctorDid: string): Promise<DoctorPendingPatients | null> {
+  const repo = getDoctorPatientRepo();
+  const records = await repo.find({ where: { doctorDid } });
+  
+  if (records.length === 0) return null;
+  return formatDoctorPendingPatients(records);
 }
 
-function writeFile(data: DoctorPendingPatients[]) {
-  fs.writeFileSync(PENDING_PATIENTS_FILE, JSON.stringify(data, null, 2));
-}
-
-export function getPendingPatientsByDoctorDid(doctorDid: string): DoctorPendingPatients | null {
-  const all = readFile();
-  return all.find((d) => d.doctorDid === doctorDid) || null;
-}
-
-export function addPendingPatient(
+export async function addPendingPatient(
   doctorDid: string,
   doctorWallet: string,
   patientWallet: string,
   patientDid: string
-): DoctorPendingPatients {
-  const all = readFile();
-  let doctorRecord = all.find((d) => d.doctorDid === doctorDid);
-
-  if (!doctorRecord) {
-    doctorRecord = {
-      doctorDid,
-      doctorWallet,
-      patients: [],
-      updatedAt: new Date().toISOString(),
-    };
-    all.push(doctorRecord);
-  }
+): Promise<DoctorPendingPatients> {
+  const repo = getDoctorPatientRepo();
+  const normalizedDoctorWallet = normalizeWallet(doctorWallet);
+  const normalizedPatientWallet = normalizeWallet(patientWallet);
 
   // Check if patient already exists
-  const existingIndex = doctorRecord.patients.findIndex((p) => p.patientWallet === patientWallet);
-  if (existingIndex === -1) {
-    doctorRecord.patients.push({
-      patientWallet,
+  const existing = await repo.findOne({
+    where: {
+      doctorDid,
+      patientWallet: normalizedPatientWallet,
+    },
+  });
+
+  if (!existing) {
+    await repo.save({
+      doctorDid,
+      doctorWallet: normalizedDoctorWallet,
+      patientWallet: normalizedPatientWallet,
       patientDid,
-      addedAt: new Date().toISOString(),
+      addedAt: new Date(),
+      updatedAt: new Date(),
     });
   }
 
-  doctorRecord.updatedAt = new Date().toISOString();
-  writeFile(all);
-  return doctorRecord;
+  // Return updated records
+  const records = await repo.find({ where: { doctorDid } });
+  return formatDoctorPendingPatients(records);
 }
 
-export function removePendingPatient(doctorDid: string, patientWallet: string): DoctorPendingPatients | null {
-  const all = readFile();
-  const doctorRecord = all.find((d) => d.doctorDid === doctorDid);
+export async function removePendingPatient(doctorDid: string, patientWallet: string): Promise<DoctorPendingPatients | null> {
+  const repo = getDoctorPatientRepo();
+  const normalizedPatientWallet = normalizeWallet(patientWallet);
 
-  if (doctorRecord) {
-    doctorRecord.patients = doctorRecord.patients.filter((p) => p.patientWallet !== patientWallet);
-    doctorRecord.updatedAt = new Date().toISOString();
-    writeFile(all);
-  }
+  await repo.delete({
+    doctorDid,
+    patientWallet: normalizedPatientWallet,
+  });
 
-  return doctorRecord || null;
+  // Return updated records or null if no more patients
+  const records = await repo.find({ where: { doctorDid } });
+  return records.length > 0 ? formatDoctorPendingPatients(records) : null;
 }

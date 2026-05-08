@@ -1,8 +1,15 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import dotenv from 'dotenv'
 import { ethers } from 'ethers'
 import { fundWalletIfNeeded } from '../services/walletFundingService'
+import {
+  getDoctorPatientRepo,
+  getDoctorProfileRepo,
+  getIdentityMappingRepo,
+  getMinistryRegistryRepo,
+  getPatientProfileRepo,
+  getVerifierProfileRepo,
+  initializeDatabase,
+} from '../db'
 
 dotenv.config()
 
@@ -11,94 +18,64 @@ type WalletSource = {
   source: string
 }
 
-const dataDir = path.resolve(__dirname, '..', 'data')
-
-const defaultFundingSourceFiles = [
-  'identity-mappings.json',
-  'doctor-profiles.json',
-  'verifier-profiles.json',
-  'patient-profiles.json',
-  'doctor-pending-patients.json',
-  'ministry-license-registry.json',
-]
-
-function resolveFundingSourceFiles(dirPath: string): string[] {
-  const configured = String(process.env.AUTO_FUND_FILES || '').trim()
-  const candidates = configured
-    ? configured
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean)
-    : defaultFundingSourceFiles
-
-  const unique = Array.from(new Set(candidates))
-  return unique.filter((name) => fs.existsSync(path.join(dirPath, name)))
-}
-
-function readJson(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'))
-}
-
-function collectWalletSources(node: unknown, sourcePrefix: string, sources: WalletSource[]): void {
-  if (node === null || node === undefined) return
-
-  if (Array.isArray(node)) {
-    for (let i = 0; i < node.length; i += 1) {
-      collectWalletSources(node[i], `${sourcePrefix}[${i}]`, sources)
-    }
+function addWallet(discovered: Map<string, Set<string>>, wallet: string, source: string) {
+  const normalized = String(wallet || '').trim().toLowerCase()
+  if (!ethers.isAddress(normalized)) {
     return
   }
 
-  if (typeof node === 'object') {
-    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-      const source = `${sourcePrefix}.${key}`
-      const keyLower = key.toLowerCase()
-      const isWalletField = keyLower.includes('wallet')
-
-      if (typeof value === 'string' && ethers.isAddress(value) && isWalletField) {
-        sources.push({ wallet: ethers.getAddress(value).toLowerCase(), source })
-      } else {
-        collectWalletSources(value, source, sources)
-      }
-    }
-  }
+  const existing = discovered.get(normalized) || new Set<string>()
+  existing.add(source)
+  discovered.set(normalized, existing)
 }
 
-function getWalletsFromDataDir(dirPath: string): Map<string, Set<string>> {
+async function getWalletsFromDatabase(): Promise<Map<string, Set<string>>> {
   const discovered = new Map<string, Set<string>>()
-  const files = resolveFundingSourceFiles(dirPath)
 
-  if (files.length === 0) {
-    console.log('[fund] No funding source files found in backend data directory.')
-    return discovered
+  await initializeDatabase()
+
+  const identityRepo = getIdentityMappingRepo()
+  for (const row of await identityRepo.find()) {
+    addWallet(discovered, row.wallet, `identity_mapping:${row.role}`)
   }
 
-  console.log(`[fund] Scanning files: ${files.join(', ')}`)
+  const doctorRepo = getDoctorProfileRepo()
+  for (const row of await doctorRepo.find()) {
+    addWallet(discovered, row.wallet, 'doctor_profile')
+  }
 
-  for (const fileName of files) {
-    const absolutePath = path.join(dirPath, fileName)
-    const json = readJson(absolutePath)
-    const sources: WalletSource[] = []
-    collectWalletSources(json, fileName, sources)
+  const verifierRepo = getVerifierProfileRepo()
+  for (const row of await verifierRepo.find()) {
+    addWallet(discovered, row.wallet, 'verifier_profile')
+  }
 
-    for (const item of sources) {
-      const existing = discovered.get(item.wallet) || new Set<string>()
-      existing.add(item.source)
-      discovered.set(item.wallet, existing)
-    }
+  const patientRepo = getPatientProfileRepo()
+  for (const row of await patientRepo.find()) {
+    addWallet(discovered, row.wallet, 'patient_profile')
+  }
+
+  const doctorPatientRepo = getDoctorPatientRepo()
+  for (const row of await doctorPatientRepo.find()) {
+    addWallet(discovered, row.doctorWallet, 'doctor_patient.doctorWallet')
+    addWallet(discovered, row.patientWallet, 'doctor_patient.patientWallet')
+  }
+
+  const ministryRepo = getMinistryRegistryRepo()
+  for (const row of await ministryRepo.find()) {
+    addWallet(discovered, row.linkedWallet || '', `ministry_registry:${row.professionalId}`)
   }
 
   return discovered
 }
 
 async function main() {
-  const discovered = getWalletsFromDataDir(dataDir)
+  const discovered = await getWalletsFromDatabase()
   if (discovered.size === 0) {
-    console.log('[fund] No wallets discovered in backend data files. Nothing to fund.')
+    console.log('[fund] No wallets discovered in SQLite. Nothing to fund.')
     return
   }
 
-  console.log(`[fund] Discovered ${discovered.size} wallet(s) from ${dataDir}`)
+  console.log(`[fund] Discovered ${discovered.size} wallet(s) from SQLite`)
   let fundedCount = 0
   let skippedCount = 0
 

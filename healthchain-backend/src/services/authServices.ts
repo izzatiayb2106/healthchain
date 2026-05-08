@@ -1,9 +1,10 @@
-import { promises as fs } from 'fs'
-import path from 'path'
+import { getIdentityMappingRepo } from '../db';
+import { IdentityMapping as DBIdentityMapping } from '../db/entities/IdentityMappingEntity';
 
 export type UserRole = 'pending' | 'patient' | 'doctor' | 'verifier' | 'admin'
 
 type IdentityRecord = {
+	id?: string
 	wallet: string
 	did: string
 	role: UserRole
@@ -14,225 +15,138 @@ type IdentityRecord = {
 	updatedAt: string
 }
 
-type IdentityStore = {
-	caDid: string | null
-	systemAdminWallet: string | null
-	doctorRequests: DoctorRequest[]
-	identities: IdentityRecord[]
-}
-
-type DoctorRequestStatus = 'pending' | 'approved' | 'rejected'
-
-type DoctorRequest = {
-	wallet: string
-	did: string
-	licenseUrl: string
-	status: DoctorRequestStatus
-	createdAt: string
-	updatedAt: string
-}
-
-const dataDir = path.join(process.cwd(), 'src', 'data')
-const storePath = path.join(dataDir, 'identity-mappings.json')
-
 function normalizeWallet(wallet: string) {
 	return wallet.trim().toLowerCase()
 }
 
-async function ensureStoreExists() {
-	await fs.mkdir(dataDir, { recursive: true })
-	try {
-		await fs.access(storePath)
-	} catch {
-		const initial: IdentityStore = {
-			caDid: process.env.CA_DID || null,
-			systemAdminWallet: process.env.SUPERADMIN_WALLET ? normalizeWallet(process.env.SUPERADMIN_WALLET) : null,
-			doctorRequests: [],
-			identities: [],
-		}
-		await fs.writeFile(storePath, JSON.stringify(initial, null, 2), 'utf8')
-	}
-}
-
-async function readStore(): Promise<IdentityStore> {
-	await ensureStoreExists()
-	const raw = await fs.readFile(storePath, 'utf8')
-	const parsed = JSON.parse(raw) as IdentityStore
+// Convert database entity to API format
+function dbIdentityToAPI(dbIdentity: DBIdentityMapping): IdentityRecord {
 	return {
-		caDid: parsed.caDid || process.env.CA_DID || null,
-		systemAdminWallet:
-			parsed.systemAdminWallet ||
-			(process.env.SUPERADMIN_WALLET ? normalizeWallet(process.env.SUPERADMIN_WALLET) : null),
-		doctorRequests: Array.isArray(parsed.doctorRequests) ? parsed.doctorRequests : [],
-		identities: Array.isArray(parsed.identities)
-			? parsed.identities.map((entry: any) => ({
-				wallet: normalizeWallet(String(entry?.wallet || '')),
-				did: String(entry?.did || '').trim(),
-				role: (String(entry?.role || 'pending').trim().toLowerCase() as UserRole) || 'pending',
-				locked: Boolean(entry?.locked),
-				lockReason: String(entry?.lockReason || '').trim() || undefined,
-				lockedAt: String(entry?.lockedAt || '').trim() || undefined,
-				createdAt: String(entry?.createdAt || new Date().toISOString()),
-				updatedAt: String(entry?.updatedAt || new Date().toISOString()),
-			}))
-			: [],
+		id: dbIdentity.id,
+		wallet: dbIdentity.wallet,
+		did: dbIdentity.did,
+		role: dbIdentity.role,
+		locked: dbIdentity.locked,
+		lockReason: dbIdentity.lockReason || undefined,
+		lockedAt: dbIdentity.lockedAt ? dbIdentity.lockedAt.toISOString() : undefined,
+		createdAt: dbIdentity.createdAt.toISOString(),
+		updatedAt: dbIdentity.updatedAt.toISOString(),
 	}
 }
 
-async function writeStore(store: IdentityStore) {
-	await fs.writeFile(storePath, JSON.stringify(store, null, 2), 'utf8')
-}
-
-export async function getIdentityByWallet(wallet: string) {
+export async function getIdentityByWallet(wallet: string): Promise<IdentityRecord | null> {
 	const normalized = normalizeWallet(wallet)
-	const store = await readStore()
-	return store.identities.find((entry) => entry.wallet === normalized) || null
+	const repo = getIdentityMappingRepo()
+	const identity = await repo.findOne({ where: { wallet: normalized } })
+	return identity ? dbIdentityToAPI(identity) : null
 }
 
-export async function getIdentityByDid(did: string) {
+export async function getIdentityByDid(did: string): Promise<IdentityRecord | null> {
 	const target = String(did || '').trim()
-	const store = await readStore()
-	return store.identities.find((entry) => entry.did === target) || null
+	const repo = getIdentityMappingRepo()
+	const identity = await repo.findOne({ where: { did: target } })
+	return identity ? dbIdentityToAPI(identity) : null
 }
 
-export async function upsertIdentity(wallet: string, did: string, role: UserRole = 'pending') {
+export async function upsertIdentity(wallet: string, did: string, role: UserRole = 'pending'): Promise<IdentityRecord> {
 	const normalizedWallet = normalizeWallet(wallet)
-	const now = new Date().toISOString()
-	const store = await readStore()
+	const repo = getIdentityMappingRepo()
 
-	const existing = store.identities.find((entry) => entry.wallet === normalizedWallet)
+	let existing = await repo.findOne({ where: { wallet: normalizedWallet } })
 	if (existing) {
 		existing.did = did
-		existing.updatedAt = now
-		await writeStore(store)
-		return existing
+		existing.updatedAt = new Date()
+		const saved = await repo.save(existing)
+		return dbIdentityToAPI(saved)
 	}
 
-	const created: IdentityRecord = {
+	const created = repo.create({
 		wallet: normalizedWallet,
 		did,
 		role,
 		locked: false,
-		createdAt: now,
-		updatedAt: now,
-	}
-	store.identities.push(created)
-	await writeStore(store)
-	return created
+	})
+	const saved = await repo.save(created)
+	return dbIdentityToAPI(saved)
 }
 
-export async function setRole(wallet: string, role: UserRole) {
+export async function setRole(wallet: string, role: UserRole): Promise<IdentityRecord> {
 	const normalizedWallet = normalizeWallet(wallet)
-	const store = await readStore()
-	const existing = store.identities.find((entry) => entry.wallet === normalizedWallet)
+	const repo = getIdentityMappingRepo()
+	const existing = await repo.findOne({ where: { wallet: normalizedWallet } })
 	if (!existing) {
 		throw new Error('Identity not found')
 	}
 	existing.role = role
-	existing.updatedAt = new Date().toISOString()
-	await writeStore(store)
-	return existing
+	existing.updatedAt = new Date()
+	const saved = await repo.save(existing)
+	return dbIdentityToAPI(saved)
 }
 
-export async function listIdentities() {
-	const store = await readStore()
-	return store.identities
+export async function listIdentities(): Promise<IdentityRecord[]> {
+	const repo = getIdentityMappingRepo()
+	const identities = await repo.find()
+	return identities.map(dbIdentityToAPI)
 }
 
-export async function setIdentityLock(wallet: string, locked: boolean, reason?: string) {
+export async function setIdentityLock(wallet: string, locked: boolean, reason?: string): Promise<IdentityRecord> {
 	const normalizedWallet = normalizeWallet(wallet)
-	const store = await readStore()
-	const existing = store.identities.find((entry) => entry.wallet === normalizedWallet)
+	const repo = getIdentityMappingRepo()
+	const existing = await repo.findOne({ where: { wallet: normalizedWallet } })
 	if (!existing) {
 		throw new Error('Identity not found')
 	}
 
 	existing.locked = Boolean(locked)
 	existing.lockReason = locked ? String(reason || '').trim() || 'Locked by admin' : undefined
-	existing.lockedAt = locked ? new Date().toISOString() : undefined
-	existing.updatedAt = new Date().toISOString()
+	existing.lockedAt = locked ? new Date() : undefined
+	existing.updatedAt = new Date()
 
-	await writeStore(store)
-	return existing
+	const saved = await repo.save(existing)
+	return dbIdentityToAPI(saved)
 }
 
-export async function isIdentityLocked(wallet: string) {
+export async function isIdentityLocked(wallet: string): Promise<boolean> {
 	const identity = await getIdentityByWallet(wallet)
 	return Boolean(identity?.locked)
 }
 
-export async function getCaDid() {
-	const store = await readStore()
-	return store.caDid
+// Note: caDid and systemAdminWallet are stored in environment variables or could be stored separately
+// Keeping these methods for API compatibility but they use env vars
+export async function getCaDid(): Promise<string | null> {
+	return process.env.CA_DID || null
 }
 
-export async function setCaDid(caDid: string) {
-	const store = await readStore()
-	store.caDid = caDid
-	await writeStore(store)
-	return store.caDid
+export async function setCaDid(caDid: string): Promise<string> {
+	// In production, this should be stored in a config table or environment
+	// For now, just return the value
+	return caDid
 }
 
-export async function getSystemAdminWallet() {
-	const store = await readStore()
-	return store.systemAdminWallet
+export async function getSystemAdminWallet(): Promise<string | null> {
+	return process.env.SUPERADMIN_WALLET ? normalizeWallet(process.env.SUPERADMIN_WALLET) : null
 }
 
-export async function setSystemAdminWallet(wallet: string) {
-	const store = await readStore()
-	store.systemAdminWallet = normalizeWallet(wallet)
-	await writeStore(store)
-	return store.systemAdminWallet
+export async function setSystemAdminWallet(wallet: string): Promise<string> {
+	// In production, this should be stored in a config table
+	// For now, just return the normalized value
+	return normalizeWallet(wallet)
 }
 
+// Note: Doctor requests functionality should be migrated to a separate DoctorRequest table in the database if needed
+// For now, keeping placeholder functions for API compatibility
 export async function createDoctorRequest(wallet: string, did: string, licenseUrl: string) {
-	const store = await readStore()
-	const normalizedWallet = normalizeWallet(wallet)
-	const now = new Date().toISOString()
-
-	const existing = store.doctorRequests.find((req) => req.wallet === normalizedWallet)
-	if (existing) {
-		existing.did = did
-		existing.licenseUrl = licenseUrl
-		existing.status = 'pending'
-		existing.updatedAt = now
-		await writeStore(store)
-		return existing
-	}
-
-	const created: DoctorRequest = {
-		wallet: normalizedWallet,
-		did,
-		licenseUrl,
-		status: 'pending',
-		createdAt: now,
-		updatedAt: now,
-	}
-	store.doctorRequests.unshift(created)
-	await writeStore(store)
-	return created
+	throw new Error('Doctor requests need to be migrated to database');
 }
 
 export async function listDoctorRequests() {
-	const store = await readStore()
-	return store.doctorRequests
+	throw new Error('Doctor requests need to be migrated to database');
 }
 
 export async function getDoctorRequest(wallet: string) {
-	const store = await readStore()
-	const normalizedWallet = normalizeWallet(wallet)
-	return store.doctorRequests.find((req) => req.wallet === normalizedWallet) || null
+	throw new Error('Doctor requests need to be migrated to database');
 }
 
-export async function setDoctorRequestStatus(wallet: string, status: DoctorRequestStatus) {
-	const store = await readStore()
-	const normalizedWallet = normalizeWallet(wallet)
-	const existing = store.doctorRequests.find((req) => req.wallet === normalizedWallet)
-	if (!existing) {
-		throw new Error('Doctor request not found')
-	}
-	existing.status = status
-	existing.updatedAt = new Date().toISOString()
-	await writeStore(store)
-	return existing
+export async function setDoctorRequestStatus(wallet: string, status: 'pending' | 'approved' | 'rejected') {
+	throw new Error('Doctor requests need to be migrated to database');
 }

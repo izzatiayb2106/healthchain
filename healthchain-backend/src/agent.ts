@@ -5,12 +5,12 @@ import { KeyManager } from '@veramo/key-manager'
 import { KeyManagementSystem, SecretBox } from '@veramo/kms-local'
 import { Resolver } from 'did-resolver'
 import { getResolver as ethrDidResolver } from 'ethr-did-resolver'
-import { DataSource } from 'typeorm'
-import { Entities, KeyStore, DIDStore, PrivateKeyStore } from '@veramo/data-store'
+import { KeyStore, DIDStore, PrivateKeyStore } from '@veramo/data-store'
 import { EthrDIDProvider } from '@veramo/did-provider-ethr'
 import { CredentialPlugin } from '@veramo/credential-w3c'
 import { CredentialProviderJWT } from '@veramo/credential-jwt'
 import { DIDResolverPlugin } from '@veramo/did-resolver'
+import { initializeDatabase, getDataSource } from './db'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -28,15 +28,8 @@ export async function createVeramoAgent() {
     return agentInstance
   }
 
-  const dbConnection = new DataSource({
-    type: 'sqlite',
-    database: 'database.sqlite',
-    synchronize: true,
-    logging: false,
-    entities: Entities,
-  })
-
-  await dbConnection.initialize()
+  // Initialize database with all entities and auto-migrate data from JSON
+  const dbConnection = await initializeDatabase()
  
   const resolver = new Resolver({
     ...ethrDidResolver({

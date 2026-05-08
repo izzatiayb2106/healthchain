@@ -618,19 +618,6 @@ const PatientDashboard: React.FC = () => {
 		setQrSecondsRemaining(0);
 	};
 
-	const onChainCredentialKeys = new Set(
-		hybridRecords.map((record) => `${String(record.cid || '').trim()}|${String(record.payloadHash || '').trim().toLowerCase()}`)
-	);
-
-	const pendingHybridCredentials = credentials.filter(
-		(entry) =>
-			entry.mode === 'hybrid' &&
-			(!String(entry.recordId || '').trim() || !String(entry.contractAddress || '').trim()) &&
-			!onChainCredentialKeys.has(
-				`${String(entry.cid || '').trim()}|${String(entry.payloadHash || '').trim().toLowerCase()}`
-			)
-	);
-
 	const decodedHybrid = hybridDecrypted ? decodeVcJwt(hybridDecrypted.vcJwt) : null;
 	const decodedSubject = decodedHybrid?.vc?.credentialSubject || null;
 	const patientName = String(decodedSubject?.patientName || decodedSubject?.name || 'N/A');
@@ -829,13 +816,13 @@ const PatientDashboard: React.FC = () => {
 					</button>
 				</div>
 				<p>
-					<strong>On-chain:</strong> {hybridRecords.length} record(s) • <strong>Pending finalization:</strong> {pendingHybridCredentials.length}
+					<strong>On-chain:</strong> {hybridRecords.length} record(s)
 				</p>
 				{qrError ? <div className="doctor-apply-error">{qrError}</div> : null}
 				{credentialsError ? <div className="doctor-apply-error">{credentialsError}</div> : null}
 				{hybridError ? <div className="doctor-apply-error">{hybridError}</div> : null}
 				{credentialsLoading || hybridLoading ? <p>Loading credentials...</p> : null}
-				{!credentialsLoading && !hybridLoading && pendingHybridCredentials.length === 0 && hybridRecords.length === 0 ? (
+				{!credentialsLoading && !hybridLoading && hybridRecords.length === 0 ? (
 					<p>No credentials found yet.</p>
 				) : null}
 
@@ -870,17 +857,6 @@ const PatientDashboard: React.FC = () => {
 							</article>
 						);
 					})}
-
-					{pendingHybridCredentials.map((entry, index) => (
-						<article key={`pending-hybrid-${entry.issuedAt}-${index}`} className="credential-card">
-							<h3>{entry.credentialType}</h3>
-							<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
-							<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
-							<p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
-							<p><strong>Payload Hash:</strong> {entry.payloadHash || 'Not available'}</p>
-							<p><strong>Status:</strong> Waiting for on-chain confirmation</p>
-						</article>
-					))}
 
 					{hybridRecords.map((record) => {
 						return (

@@ -91,9 +91,7 @@ export default function authRoutes(agent: any) {
       if (mapped.role !== resolvedRole) {
         mapped = await setRole(mapped.wallet, resolvedRole);
       }
-      if (!existing) {
-        await fundWalletIfNeeded(mapped.wallet, "auth:metamask registration");
-      }
+      await fundWalletIfNeeded(mapped.wallet, "auth:metamask login");
 
       const systemAdminWallet = await getSystemAdminWallet()
       if (systemAdminWallet && mapped.wallet === systemAdminWallet && mapped.role !== 'admin') {
@@ -157,6 +155,8 @@ export default function authRoutes(agent: any) {
       if (mapped.role !== resolvedRole) {
         mapped = await setRole(mapped.wallet, resolvedRole);
       }
+
+      await fundWalletIfNeeded(mapped.wallet, "auth:login-jwt login");
 
       const licenseRecord = professionalId
         ? await getMinistryLicenseByProfessionalId(professionalId)
