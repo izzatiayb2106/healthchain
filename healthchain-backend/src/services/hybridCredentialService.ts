@@ -21,6 +21,7 @@ export type HybridCredentialRecord = {
   contractAddress?: string
   recordId?: string
   finalizedAt?: string
+  credentialDetails?: Record<string, any> | null
 }
 
 const PINATA_PIN_JSON_URL = 'https://api.pinata.cloud/pinning/pinJSONToIPFS'
@@ -38,6 +39,7 @@ type PendingHybridCredentialDraft = {
   source?: 'live-issue' | 'migration-legacy'
   legacyIssuedAt?: string
   storageMode: HybridCredentialRecord['storageMode']
+  credentialDetails?: Record<string, any> | null
 }
 
 const pendingHybridCredentialDrafts = new Map<string, PendingHybridCredentialDraft>()
@@ -202,6 +204,7 @@ export async function storeHybridEncryptedCredential(input: {
   expirationPolicy?: string
   source?: 'live-issue' | 'migration-legacy'
   legacyIssuedAt?: string
+  credentialDetails?: Record<string, any> | null
 }) {
   const encryptedCredentialHex = String(input.encryptedCredentialHex || '').trim()
   if (!encryptedCredentialHex) {
@@ -242,6 +245,7 @@ export async function storeHybridEncryptedCredential(input: {
     source: input.source || 'live-issue',
     legacyIssuedAt: String(input.legacyIssuedAt || '').trim() || undefined,
     storageMode,
+    credentialDetails: input.credentialDetails || null,
   })
 
   return {
@@ -293,6 +297,7 @@ export async function finalizeHybridCredential(input: {
       contractAddress: normalizeWallet(input.contractAddress),
       recordId: String(input.recordId || '').trim(),
       finalizedAt: new Date(),
+      credentialDetails: pendingDraft.credentialDetails || null,
     })
   )
 
@@ -382,6 +387,7 @@ function dbToApi(entity: HybridCredential): HybridCredentialRecord {
     contractAddress: entity.contractAddress || undefined,
     recordId: entity.recordId || undefined,
     finalizedAt: entity.finalizedAt ? entity.finalizedAt.toISOString() : undefined,
+    credentialDetails: entity.credentialDetails || undefined,
   }
 }
 

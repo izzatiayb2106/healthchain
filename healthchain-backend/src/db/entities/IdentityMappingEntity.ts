@@ -28,4 +28,13 @@ export class IdentityMapping {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+
+  @Column('boolean', { default: false })
+  pdpaConsentAccepted!: boolean;
+
+  @Column('datetime', { nullable: true })
+  pdpaConsentAt?: Date | null;
+
+  @Column('text', { nullable: true })
+  pdpaConsentVersion?: string;
 }

@@ -15,6 +15,7 @@ type IdentityMapping = {
   lockedAt?: string;
   createdAt: string;
   updatedAt: string;
+  displayName?: string;
 };
 
 type AuditAction =
@@ -65,6 +66,9 @@ const AdminDashboard: React.FC = () => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditRoleFilter, setAuditRoleFilter] = useState<string>("");
   const [auditActionFilter, setAuditActionFilter] = useState<string>("");
+  const [lockReasonModalOpen, setLockReasonModalOpen] = useState(false);
+  const [selectedWalletForLock, setSelectedWalletForLock] = useState<string | null>(null);
+  const [lockReasonInput, setLockReasonInput] = useState<string>("");
 
   const canAccess = useMemo(() => {
     return (localStorage.getItem("hc_role") || "").toLowerCase() === "admin";
@@ -150,19 +154,36 @@ const AdminDashboard: React.FC = () => {
   };
 
   const lockUser = async (wallet: string) => {
+    setSelectedWalletForLock(wallet);
+    setLockReasonInput("");
+    setLockReasonModalOpen(true);
+  };
+
+  const confirmLockUser = async () => {
+    if (!selectedWalletForLock) return;
+
     try {
-      setUpdatingWallet(wallet);
+      setUpdatingWallet(selectedWalletForLock);
       setError(null);
-      const reason = window.prompt("Lock reason (optional):") || "";
-      await apiClient.put(`/did/mapping/${encodeURIComponent(wallet)}/lock`, { reason });
+      await apiClient.put(`/did/mapping/${encodeURIComponent(selectedWalletForLock)}/lock`, { 
+        reason: lockReasonInput 
+      });
       await loadMappings();
+      setLockReasonModalOpen(false);
+      setSelectedWalletForLock(null);
+      setLockReasonInput("");
     } catch (err: any) {
       console.error(err);
       const message = err?.response?.data?.error || "Failed to lock user";
       setError(message);
-    } finally {
       setUpdatingWallet(null);
     }
+  };
+
+  const cancelLockUser = () => {
+    setLockReasonModalOpen(false);
+    setSelectedWalletForLock(null);
+    setLockReasonInput("");
   };
 
   const unlockUser = async (wallet: string) => {
@@ -256,7 +277,7 @@ const AdminDashboard: React.FC = () => {
               <thead>
                 <tr>
                   <th>Wallet</th>
-                  <th>DID</th>
+                  <th>Name</th>
                   <th>Current Role</th>
                   <th>Lock State</th>
                   <th>Created</th>
@@ -269,7 +290,9 @@ const AdminDashboard: React.FC = () => {
                 {rows.map((row) => (
                   <tr key={row.wallet}>
                     <td className="wallet" title={row.wallet}>{row.wallet}</td>
-                    <td className="did" title={row.did}>{row.did}</td>
+                    <td className="name" title={row.displayName || row.did}>
+                      {row.displayName ? row.displayName : (row.role === 'admin' ? 'Administrator' : row.did)}
+                    </td>
                     <td>
                       <span className={`badge ${row.role}`}>{row.role}</span>
                     </td>
@@ -401,6 +424,56 @@ const AdminDashboard: React.FC = () => {
           )}
         </div>
         ) : null}
+
+        {lockReasonModalOpen && (
+          <div className="modal-overlay" role="dialog" aria-modal="true">
+            <div className="vaccine-form-modal">
+              <h2>Lock User Account</h2>
+              <p style={{ marginTop: 12, color: 'var(--doctor-muted)' }}>
+                <strong>Wallet:</strong><br />
+                <span style={{ wordBreak: 'break-all', fontSize: '0.9em' }}>{selectedWalletForLock}</span>
+              </p>
+              <div style={{ marginTop: 16 }}>
+                <label htmlFor="lock-reason-input">
+                  <strong>Lock reason (optional):</strong>
+                </label>
+                <textarea
+                  id="lock-reason-input"
+                  value={lockReasonInput}
+                  onChange={(e) => setLockReasonInput(e.target.value)}
+                  placeholder="Enter reason for locking this account..."
+                  style={{
+                    width: '100%',
+                    minHeight: '80px',
+                    padding: '8px',
+                    marginTop: '8px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    fontFamily: 'inherit',
+                    fontSize: '0.95em',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 18 }}>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={cancelLockUser}
+                  disabled={updatingWallet === selectedWalletForLock}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="btn btn-danger" 
+                  onClick={() => void confirmLockUser()}
+                  disabled={updatingWallet === selectedWalletForLock}
+                >
+                  {updatingWallet === selectedWalletForLock ? "Locking..." : "Lock Account"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       </main>
       </div>

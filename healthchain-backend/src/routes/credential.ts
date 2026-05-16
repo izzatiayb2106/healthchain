@@ -269,6 +269,7 @@ export default function credentialRoutes(agent: any) {
         issuedAt,
         expirationDate: expiration.expirationDate,
         expirationPolicy: expiration.expirationPolicy,
+        credentialDetails,
       });
 
       // Emit real-time event to patient and doctor for hybrid credential
@@ -452,6 +453,7 @@ export default function credentialRoutes(agent: any) {
         payloadHash: found.payloadHash,
         encryptedCredentialHex: found.encryptedCredentialHex,
         credentialType: found.credentialType,
+        credentialDetails: found.credentialDetails || null,
         issuedAt: found.issuedAt,
         contractAddress: found.contractAddress || null,
         recordId: found.recordId || null,

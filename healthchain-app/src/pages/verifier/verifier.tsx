@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ethers } from 'ethers';
+import { BrowserQRCodeReader } from '@zxing/browser';
 import { Html5Qrcode } from 'html5-qrcode';
+import jsQR from 'jsqr';
 import { apiClient, logoutWithAudit } from '../../services/authService';
 import './verifier.css';
 
@@ -38,6 +40,7 @@ const VerifierDashboard: React.FC = () => {
 	const [hybridResult, setHybridResult] = useState<HybridVerifyResult | null>(null);
 	const [scanError, setScanError] = useState<string | null>(null);
 	const [isScanning, setIsScanning] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const [verifierProfile, setVerifierProfile] = useState<VerifierProfile | null>(null);
 
 	const parseHybridPayload = (rawValue: string): HybridQrPayload => {
@@ -48,14 +51,19 @@ const VerifierDashboard: React.FC = () => {
 			throw new Error('Invalid hybrid QR payload JSON.');
 		}
 
-		if (parsed?.type !== 'healthchain-hybrid-record') {
+		// Support both compact format (t='hc-hybrid') and full format (type='healthchain-hybrid-record')
+		const isCompact = parsed?.t === 'hc-hybrid';
+		const isFull = parsed?.type === 'healthchain-hybrid-record';
+		
+		if (!isCompact && !isFull) {
 			throw new Error('Unsupported QR payload type. Use a hybrid record payload from patient dashboard.');
 		}
 
-		const contractAddress = String(parsed.contractAddress || '').trim();
-		const recordId = String(parsed.recordId || '').trim();
-		const cid = String(parsed.cid || '').trim();
-		const payloadHash = String(parsed.payloadHash || '').trim();
+		// Map compact keys to full format
+		const contractAddress = String(parsed.a || parsed.contractAddress || '').trim();
+		const recordId = String(parsed.r || parsed.recordId || '').trim();
+		const cid = String(parsed.c || parsed.cid || '').trim();
+		const payloadHash = String(parsed.h || parsed.payloadHash || '').trim();
 
 		if (!contractAddress || !recordId || !cid || !payloadHash) {
 			throw new Error('Hybrid payload is missing required fields: contractAddress, recordId, cid, payloadHash.');
@@ -199,7 +207,7 @@ const VerifierDashboard: React.FC = () => {
 
 			await scanner.start(
 				{ deviceId: { exact: cameras[0].id } },
-				{ fps: 10, qrbox: { width: 250, height: 250 } },
+				{ fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
 				(decodedText) => {
 					setTokenOrPayload(decodedText);
 					void verifyQrValue(decodedText);
@@ -215,6 +223,93 @@ const VerifierDashboard: React.FC = () => {
 			scannerRef.current = null;
 			setIsScanning(false);
 			setScanError(err?.message || 'Unable to start camera scanner.');
+		}
+	};
+
+	const handleFileInputClick = () => {
+		fileInputRef.current?.click();
+	};
+
+	const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+		const input = event.currentTarget;
+		const file = input.files?.[0];
+		if (!file) return;
+		setScanError(null);
+		console.log('Uploaded QR file name:', file.name);
+		console.log('Uploaded QR file type:', file.type || 'unknown');
+		console.log('Uploaded QR file size:', file.size);
+		let imageUrl = '';
+		try {
+			imageUrl = URL.createObjectURL(file);
+			const image = new Image();
+			image.decoding = 'async';
+			const imageLoaded = new Promise<void>((resolve, reject) => {
+				image.onload = () => resolve();
+				image.onerror = () => reject(new Error('Unable to load uploaded QR image.'));
+			});
+			image.src = imageUrl;
+			await imageLoaded;
+			console.log('Loaded QR image dimensions:', image.naturalWidth, image.naturalHeight);
+
+			const padding = 48;
+			const canvas = document.createElement('canvas');
+			canvas.width = image.naturalWidth + padding * 2;
+			canvas.height = image.naturalHeight + padding * 2;
+
+			const ctx = canvas.getContext('2d');
+			if (!ctx) {
+				throw new Error('Unable to create canvas context.');
+			}
+
+			// Keep original size and add a white quiet-zone border around the image.
+			ctx.fillStyle = '#ffffff';
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			ctx.drawImage(image, padding, padding, image.naturalWidth, image.naturalHeight);
+
+			// Convert to high-contrast black and white to improve decoder reliability.
+			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+			const data = imageData.data;
+			for (let i = 0; i < data.length; i += 4) {
+				const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+				const bw = gray > 150 ? 255 : 0;
+				data[i] = bw;
+				data[i + 1] = bw;
+				data[i + 2] = bw;
+				data[i + 3] = 255;
+			}
+			ctx.putImageData(imageData, 0, 0);
+
+			let decodedText = '';
+			try {
+				const qrReader = new BrowserQRCodeReader();
+				const result = await qrReader.decodeFromCanvas(canvas);
+				decodedText = result.getText();
+				console.log('ZXing succeeded');
+			} catch (zxingErr) {
+				console.warn('ZXing decode failed, trying jsQR fallback:', zxingErr);
+				const fallbackData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+				const jsqrResult = jsQR(fallbackData.data, fallbackData.width, fallbackData.height, {
+					inversionAttempts: 'attemptBoth',
+				});
+				if (!jsqrResult?.data) {
+					throw zxingErr;
+				}
+				decodedText = jsqrResult.data;
+				console.log('jsQR fallback succeeded');
+			}
+
+			console.log('Decoded QR payload:', decodedText);
+			setTokenOrPayload(decodedText);
+			await verifyQrValue(decodedText);
+		} catch (err: any) {
+			console.error('QR decode error:', err);
+			setScanError(err?.message || 'Failed to scan uploaded image.');
+		} finally {
+			if (imageUrl) {
+				URL.revokeObjectURL(imageUrl);
+			}
+			// clear the input so same file can be chosen again
+			input.value = '';
 		}
 	};
 
@@ -265,6 +360,17 @@ const VerifierDashboard: React.FC = () => {
 					<button className="btn approve" type="button" onClick={() => void startScanner()} disabled={isScanning || verifying}>
 						{isScanning ? 'Scanner Running...' : 'Scan'}
 					</button>
+					<button className="btn" type="button" onClick={handleFileInputClick} disabled={verifying}>
+						Upload / Take Photo
+					</button>
+					<input
+						type="file"
+						accept="image/*"
+						capture="environment"
+						ref={fileInputRef}
+						onChange={handleFileChange}
+						style={{ display: 'none' }}
+					/>
 					<button className="btn logout" type="button" onClick={() => void stopScanner()} disabled={!isScanning}>
 						Stop Scan
 					</button>
@@ -289,7 +395,7 @@ const VerifierDashboard: React.FC = () => {
 				<section className="claim-list">
 					<article className={`claim-card ${hybridResult.valid && !hybridResult.expired ? 'approved' : ''}`}>
 						<div className="claim-main claim-main-column">
-							<h3 className="patient-name">Hybrid On-Chain Validation</h3>
+							<h3 className="patient-name">On-Chain Validation</h3>
 							<div
 								className={
 									hybridResult.valid

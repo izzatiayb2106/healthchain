@@ -2,9 +2,10 @@ import React, { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./login.css";
-import { loginWithJWT } from "../../services/authService";
+import { hasPdpaConsent, loginWithJWT, logout, setPdpaConsentAccepted } from "../../services/authService";
 import ProfessionalAccessForm from "../../components/ui/ProfessionalAccessForm";
 import healthchainLogo from "../../assets/healthchain.svg";
+import PDPAConsentModal from "../../components/ui/PDPAConsentModal";
 
 declare global {
   interface Window {
@@ -16,6 +17,8 @@ const Login: React.FC = () => {
   const [account, setAccount] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPdpaModal, setShowPdpaModal] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -31,6 +34,24 @@ const Login: React.FC = () => {
     if (role === "verifier") return "/verifier";
     if (role === "admin") return "/admin";
     return "/patient";
+  };
+
+  const handlePdpaAccept = () => {
+    setPdpaConsentAccepted();
+    setShowPdpaModal(false);
+    const destination = pendingRoute;
+    setPendingRoute(null);
+    if (destination) {
+      navigate(destination);
+    }
+  };
+
+  const handlePdpaDecline = () => {
+    logout();
+    setShowPdpaModal(false);
+    setPendingRoute(null);
+    setAccount(null);
+    setError("PDPA consent is required to continue using the system.");
   };
 
   const connectWallet = async () => {
@@ -61,8 +82,20 @@ const Login: React.FC = () => {
 
       console.log("✅ Logged in with JWT token, expires in:", authResult.expiresIn);
 
+      const targetRoute = routeByRole(authResult.role);
+      const requiresPdpaConsent =
+        (authResult.role === "patient" || authResult.role === "doctor") &&
+        Boolean(authResult.didCreated) &&
+        !hasPdpaConsent();
+
+      if (requiresPdpaConsent) {
+        setPendingRoute(targetRoute);
+        setShowPdpaModal(true);
+        return;
+      }
+
       // Navigate based on role
-      navigate(routeByRole(authResult.role));
+      navigate(targetRoute);
     } catch (err: any) {
       console.error(err);
 
@@ -102,6 +135,12 @@ const Login: React.FC = () => {
 
         <ProfessionalAccessForm />
       </div>
+
+      <PDPAConsentModal
+        open={showPdpaModal}
+        onAccept={handlePdpaAccept}
+        onDecline={handlePdpaDecline}
+      />
     </div>
   );
 };

@@ -1,10 +1,30 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:3001';
+// Determine backend API base dynamically so the frontend served on a device
+// will call the host machine's backend. Keeps localhost for desktop dev.
+const API_BASE = (() => {
+  try {
+    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+      const hostname = String(window.location.hostname || '').trim();
+      const protocol = window.location.protocol || 'http:';
+      // If frontend is served via an IP (e.g. 10.x.x.x) the backend is expected
+      // to be reachable on the same host at port 3001. Keep localhost for local dev.
+      if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+        return `${protocol}//${hostname}:3001`;
+      }
+    }
+  } catch (err) {
+    // fall through to default
+  }
+  return 'http://localhost:3001';
+})();
 const TOKEN_KEY = 'hc_jwt_token';
 const WALLET_KEY = 'hc_wallet';
 const ROLE_KEY = 'hc_role';
 const DID_KEY = 'hc_did';
+const PDPA_CONSENT_VERSION = 'v1';
+const PDPA_CONSENT_KEY = `hc_pdpa_consent_${PDPA_CONSENT_VERSION}`;
+const PDPA_CONSENT_AT_KEY = `hc_pdpa_consent_at_${PDPA_CONSENT_VERSION}`;
 
 export type AuthResponse = {
   success: boolean;
@@ -13,6 +33,8 @@ export type AuthResponse = {
   did: string;
   role: 'patient' | 'doctor' | 'verifier' | 'admin';
   expiresIn: string;
+  didCreated?: boolean;
+  firstRegistration?: boolean;
 };
 
 export function getStoredToken(): string | null {
@@ -29,6 +51,15 @@ export function getStoredRole(): string | null {
 
 export function getStoredDid(): string | null {
   return localStorage.getItem(DID_KEY);
+}
+
+export function hasPdpaConsent(): boolean {
+  return localStorage.getItem(PDPA_CONSENT_KEY) === 'accepted';
+}
+
+export function setPdpaConsentAccepted() {
+  localStorage.setItem(PDPA_CONSENT_KEY, 'accepted');
+  localStorage.setItem(PDPA_CONSENT_AT_KEY, new Date().toISOString());
 }
 
 export async function loginWithJWT(

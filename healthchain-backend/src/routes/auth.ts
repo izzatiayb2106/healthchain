@@ -1,7 +1,8 @@
 import express from "express";
 import { ethers } from "ethers";
 import { ensureDidForWallet } from "../services/didService";
-import { getCaDid, getIdentityByDid, getIdentityByWallet, getSystemAdminWallet, setRole, upsertIdentity } from "../services/authServices";
+import { getCaDid, getIdentityByDid, getIdentityByWallet, getSystemAdminWallet, setRole, upsertIdentity, setPdpaConsent } from "../services/authServices";
+import { getPatientProfileByDid } from "../services/patientProfileService";
 import { getDoctorProfileByDid, getVerifierProfileByDid, upsertDoctorProfile, upsertVerifierProfile } from "../services/doctorProfileService";
 import {
   canLicenseBeIssuedToWallet,
@@ -100,12 +101,15 @@ export default function authRoutes(agent: any) {
 
       const patientCredentialIssued = false
 
+      const firstRegistration = !existing;
+
       res.json({
         success: true,
         address: mapped.wallet,
         did: mapped.did,
         role: mapped.role,
         didCreated: ensured.created,
+        firstRegistration,
         patientCredentialIssued,
       });
     } catch (err) {
@@ -234,6 +238,8 @@ export default function authRoutes(agent: any) {
         role: normalizedRole,
       });
 
+      const firstRegistration = !existing;
+
       res.json({
         success: true,
         token,
@@ -242,6 +248,7 @@ export default function authRoutes(agent: any) {
         role: mapped.role,
         expiresIn: "7d",
         didCreated: ensured.created,
+        firstRegistration,
         patientCredentialIssued,
       });
 
@@ -546,6 +553,22 @@ export default function authRoutes(agent: any) {
       res.status(500).json({ error: "SSE connection failed" });
     }
   });
+
+      // Record PDPA consent for authenticated user
+      router.post('/pdpa-consent', jwtAuthMiddleware, async (req, res) => {
+        try {
+          const user = (req as any).user;
+          if (!user || !user.wallet) {
+            return res.status(401).json({ error: 'Not authenticated' });
+          }
+          const version = String(req.body.version || '').trim() || undefined;
+          await setPdpaConsent(user.wallet, version);
+          return res.json({ success: true });
+        } catch (err: any) {
+          console.error(err);
+          return res.status(500).json({ error: err?.message || 'Failed to record pdpa consent' });
+        }
+      });
 
   return router;
 }

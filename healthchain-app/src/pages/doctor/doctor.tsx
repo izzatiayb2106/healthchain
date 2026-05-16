@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import CredentialResultModal from '../../components/ui/CredentialResultModal';
 import { ethers } from 'ethers';
 import { apiClient, denyRoleAccess, getStoredToken, logoutWithAudit } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryContract, getCredentialRegistryAddress } from '../../blockchain/credentialRegistry';
@@ -22,6 +23,7 @@ type DoctorProfile = {
 type PendingPatient = {
     patientWallet: string;
     patientDid: string;
+    patientName?: string;
     addedAt: string;
 };
 
@@ -87,6 +89,8 @@ const DoctorDashboard: React.FC = () => {
     const [selectedPatientCredentials, setSelectedPatientCredentials] = useState<IssuedCredentialEntry[]>([]);
     const [patientCredentialsLoading, setPatientCredentialsLoading] = useState(false);
     const [patientCredentialsError, setPatientCredentialsError] = useState<string | null>(null);
+    const [showCredentialResultModal, setShowCredentialResultModal] = useState(false);
+    const [credentialResultData, setCredentialResultData] = useState<any>(null);
 
     const isValidAvatarUrl = (value: string) => {
         if (!value.trim()) return true;
@@ -143,9 +147,33 @@ const DoctorDashboard: React.FC = () => {
     const loadPendingPatients = async () => {
         try {
             const response = await apiClient.get('/doctor/pending-patients/me');
-            setPendingPatients(response.data?.pendingPatients || []);
+            const raw = response.data?.pendingPatients || [];
+            const enriched = await enrichPendingPatientsWithNames(raw);
+            setPendingPatients(enriched);
         } catch (error: any) {
             console.error('Failed to load pending patients:', error);
+        }
+    };
+
+    const enrichPendingPatientsWithNames = async (patients: PendingPatient[]) => {
+        if (!Array.isArray(patients) || patients.length === 0) return patients;
+
+        try {
+            const promises = patients.map(async (p) => {
+                try {
+                    const resp = await apiClient.get(`/doctor/patient-profile/${encodeURIComponent(p.patientDid)}`);
+                    const profile = resp.data?.profile;
+                    return { ...p, patientName: String(profile?.fullName || profile?.displayName || '') } as PendingPatient;
+                } catch {
+                    // If no profile, fall back to empty name
+                    return { ...p } as PendingPatient;
+                }
+            });
+
+            const results = await Promise.all(promises);
+            return results;
+        } catch (err) {
+            return patients;
         }
     };
 
@@ -207,7 +235,8 @@ const DoctorDashboard: React.FC = () => {
             const found = patients.find((p: any) => p.patientWallet === wallet);
             if (found) {
                 await prefillPatientForm({ wallet: found.patientWallet, did: found.patientDid });
-                setPendingPatients(patients);
+                const enriched = await enrichPendingPatientsWithNames(patients);
+                setPendingPatients(enriched);
                 setManualPatientWallet('');
             }
         } catch (error: any) {
@@ -233,7 +262,8 @@ const DoctorDashboard: React.FC = () => {
             );
 
             const updatedPatients = response.data?.pendingPatients || [];
-            setPendingPatients(updatedPatients);
+            const enriched = await enrichPendingPatientsWithNames(updatedPatients);
+            setPendingPatients(enriched);
 
             if (selectedPatient?.wallet === wallet) {
                 setSelectedPatient(null);
@@ -419,15 +449,15 @@ const DoctorDashboard: React.FC = () => {
                 console.warn('Finalize failed but credential is on-chain. Backend sync may be delayed.');
             }
 
-            alert(
-                `Credential issued successfully!\n\n` +
-                `Issued to: ${prepareResponse.data?.issuedTo}\n` +
-                `Credential type: ${credentialType}\n` +
-                `CID: ${cid}\n` +
-                `Record ID: ${String(predictedRecordId)}\n` +
-                `Tx Hash: ${tx.hash}\n` +
-                `Block: ${receipt?.blockNumber ?? 'pending'}`
-            );
+            setCredentialResultData({
+                issuedTo: String(prepareResponse.data?.issuedTo || ''),
+                credentialType,
+                cid,
+                recordId: String(predictedRecordId),
+                txHash: tx.hash,
+                block: receipt?.blockNumber ?? 'pending',
+            });
+            setShowCredentialResultModal(true);
             setVaccineForm(initialVaccineForm);
             setShowIssueCredentialModal(false);
             
@@ -786,7 +816,7 @@ const DoctorDashboard: React.FC = () => {
                                         <strong>Wallet:</strong> {patient.patientWallet.substring(0, 10)}...
                                     </div>
                                     <div className="patient-info">
-                                        <strong>DID:</strong> {patient.patientDid.substring(0, 20)}...
+                                        <strong>Name:</strong> {patient.patientName ? patient.patientName : `${patient.patientDid.substring(0, 20)}...`}
                                     </div>
                                     <div className="patient-info">
                                         <strong>Added:</strong> {new Date(patient.addedAt).toLocaleString()}
@@ -814,7 +844,7 @@ const DoctorDashboard: React.FC = () => {
                             {selectedPatientCredentials.map((entry, index) => {
                                 return (
                                     <article key={`${entry.issuedAt}-${index}`} className="doctor-credential-card">
-                                        <h4>{entry.credentialType}</h4>
+                                        <h4>{entry.credential?.credentialDetails?.vaccineType || entry.credentialType}</h4>
                                         <p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
                                         <p><strong>Record ID:</strong> {entry.recordId || 'Pending'}</p>
                                         <p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
@@ -910,6 +940,19 @@ const DoctorDashboard: React.FC = () => {
                     </div>
                 </div>
             ) : null}
+
+            <CredentialResultModal
+                open={showCredentialResultModal}
+                onClose={() => {
+                    setShowCredentialResultModal(false);
+                    setCredentialResultData(null);
+                }}
+                issuedTo={credentialResultData?.issuedTo}
+                credentialType={credentialResultData?.credentialType}
+                cid={credentialResultData?.cid}
+                recordId={credentialResultData?.recordId}
+                txHash={credentialResultData?.txHash}
+            />
 
             <footer className="doctor-footer">
 				<small>HealthChain • Doctor portal</small>

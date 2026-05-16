@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { apiClient, denyRoleAccess, getStoredToken, logoutWithAudit } from '../../services/authService';
 import { assertCredentialRegistryDeployed, getCredentialRegistryAddress, getCredentialRegistryContract, mapChainRecordTuple, type HybridChainRecord } from '../../blockchain/credentialRegistry';
 import './patient.css';
+import InfoModal from '../../components/ui/InfoModal';
 
 declare global {
 	interface Window {
@@ -60,6 +61,12 @@ type HybridDecryptedView = {
 	cid: string;
 };
 
+type HybridRecordView = HybridChainRecord & {
+	credential?: {
+		credentialDetails?: Record<string, any> | null;
+	} | null;
+};
+
 type DecodedVcJwt = {
 	issuer?: string;
 	issuanceDate?: string;
@@ -113,11 +120,14 @@ const PatientDashboard: React.FC = () => {
 	const [doctorWalletInput, setDoctorWalletInput] = useState('');
 	const [registeringWithDoctor, setRegisteringWithDoctor] = useState(false);
 	const [doctorRegistrationError, setDoctorRegistrationError] = useState<string | null>(null);
+	const [showInfoModal, setShowInfoModal] = useState(false);
+	const [infoModalTitle, setInfoModalTitle] = useState('');
+	const [infoModalMessage, setInfoModalMessage] = useState<React.ReactNode>('');
 	const [qrLoadingForIssuedAt, setQrLoadingForIssuedAt] = useState<string | null>(null);
 	const [qrError, setQrError] = useState<string | null>(null);
 	const [qrSession, setQrSession] = useState<QrSession | null>(null);
 	const [qrSecondsRemaining, setQrSecondsRemaining] = useState<number>(0);
-	const [hybridRecords, setHybridRecords] = useState<HybridChainRecord[]>([]);
+	const [hybridRecords, setHybridRecords] = useState<HybridRecordView[]>([]);
 	const [hybridLoading, setHybridLoading] = useState(false);
 	const [hybridError, setHybridError] = useState<string | null>(null);
 	const [selectedHybridRecordId, setSelectedHybridRecordId] = useState<string | null>(null);
@@ -125,6 +135,8 @@ const PatientDashboard: React.FC = () => {
 	const [hybridQrPayload, setHybridQrPayload] = useState<string | null>(null);
 	const [hybridPayloadCopyStatus, setHybridPayloadCopyStatus] = useState<string | null>(null);
 	const encryptionKeyRegistrationTriedRef = useRef(false);
+	const qrCodeRef = useRef<any>(null);
+	const hybridQrCodeRef = useRef<any>(null);
 
 
 
@@ -247,12 +259,23 @@ const PatientDashboard: React.FC = () => {
 			const count = Number(await contract.getPatientRecordCount(wallet));
 			console.log('Patient record count:', count);
 			
-			const records: HybridChainRecord[] = [];
+			const records: HybridRecordView[] = [];
 			for (let index = 0; index < count; index += 1) {
 				try {
 					const tuple = await contract.getPatientRecordAt(wallet, index);
 					console.log(`Record ${index}:`, tuple);
-					records.push(mapChainRecordTuple(tuple));
+					const chainRecord = mapChainRecordTuple(tuple);
+					let credentialDetails: Record<string, any> | null = null;
+					try {
+						const credentialRes = await apiClient.get(`/credential/hybrid/cid/${encodeURIComponent(chainRecord.cid)}`);
+						credentialDetails = credentialRes.data?.credentialDetails || null;
+					} catch (credentialError: any) {
+						console.warn(`Failed to enrich record ${chainRecord.cid} with credential details:`, credentialError?.message || credentialError);
+					}
+					records.push({
+						...chainRecord,
+						credential: credentialDetails ? { credentialDetails } : null,
+					});
 				} catch (recordError: any) {
 					console.error(`Failed to load record ${index}:`, recordError);
 				}
@@ -406,12 +429,13 @@ const PatientDashboard: React.FC = () => {
 		}
 
 		setHybridPayloadCopyStatus(null);
+		// Use compact format with short keys to minimize QR data size
 		setHybridQrPayload(JSON.stringify({
-			type: 'healthchain-hybrid-record',
-			contractAddress,
-			recordId: record.recordId,
-			cid: record.cid,
-			payloadHash: record.payloadHash,
+			t: 'hc-hybrid',
+			a: contractAddress,
+			r: record.recordId,
+			c: record.cid,
+			h: record.payloadHash,
 		}));
 	};
 
@@ -618,6 +642,67 @@ const PatientDashboard: React.FC = () => {
 		setQrSecondsRemaining(0);
 	};
 
+	const downloadQrCode = async (fileName: string, ref: React.RefObject<any>) => {
+		try {
+			if (!ref.current) return;
+			const svg = ref.current.querySelector('svg');
+			if (!svg) return;
+			
+			// Clone SVG to avoid modifying original
+			const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
+			const width = Number.parseInt(clonedSvg.getAttribute('width') || '300', 10) || 300;
+			const scale = 4;
+			const outputSize = width * scale;
+			clonedSvg.setAttribute('width', String(outputSize));
+			clonedSvg.setAttribute('height', String(outputSize));
+			clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+			
+			// Create a larger canvas so the PNG stays crisp after rasterization
+			const canvas = document.createElement('canvas');
+			const ctx = canvas.getContext('2d', { alpha: false });
+			if (!ctx) return;
+			
+			canvas.width = outputSize;
+			canvas.height = outputSize;
+			
+			// Fill with white background
+			ctx.fillStyle = 'white';
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			ctx.imageSmoothingEnabled = false;
+			
+			// Serialize SVG with proper namespace
+			const svgString = new XMLSerializer().serializeToString(clonedSvg);
+			const svgBlob = new Blob([svgString], { type: 'image/svg+xml' });
+			const svgUrl = URL.createObjectURL(svgBlob);
+			
+			const img = new Image();
+			img.onload = () => {
+				try {
+					ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+					URL.revokeObjectURL(svgUrl);
+					
+					// Download as PNG with maximum quality
+					const link = document.createElement('a');
+					link.href = canvas.toDataURL('image/png', 1.0);
+					link.download = `${fileName}.png`;
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+				} catch (error) {
+					console.error('Canvas drawing failed:', error);
+					URL.revokeObjectURL(svgUrl);
+				}
+			};
+			img.onerror = () => {
+				console.error('Failed to load SVG image');
+				URL.revokeObjectURL(svgUrl);
+			};
+			img.src = svgUrl;
+		} catch (error) {
+			console.error('Failed to download QR code:', error);
+		}
+	};
+
 	const decodedHybrid = hybridDecrypted ? decodeVcJwt(hybridDecrypted.vcJwt) : null;
 	const decodedSubject = decodedHybrid?.vc?.credentialSubject || null;
 	const patientName = String(decodedSubject?.patientName || decodedSubject?.name || 'N/A');
@@ -661,7 +746,11 @@ const PatientDashboard: React.FC = () => {
 				{ doctorWallet }
 			);
 
-			alert(`Successfully registered with doctor ${doctorWallet.substring(0, 10)}...!\n\nThe doctor can now see you in their patient list and issue credentials to you.`);
+			setInfoModalTitle('Successfully registered');
+			setInfoModalMessage(
+				`Successfully registered with doctor ${doctorWallet.substring(0, 10)}...!\n\nThe doctor can now see you in their patient list and issue credentials to you.`
+			);
+			setShowInfoModal(true);
 			setDoctorWalletInput('');
 			setShowDoctorWalletInput(false);
 		} catch (error: any) {
@@ -837,7 +926,7 @@ const PatientDashboard: React.FC = () => {
 								className={`credential-card ${isLegacy ? 'credential-card-clickable' : ''}`}
 								onClick={isLegacy ? (() => void openCredentialQr(entry)) : undefined}
 							>
-								<h3>{entry.credentialType}</h3>
+								<h3>{entry.credential?.credentialDetails?.vaccineType || entry.credentialType}</h3>
 						
 								<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
 								<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
@@ -861,7 +950,7 @@ const PatientDashboard: React.FC = () => {
 					{hybridRecords.map((record) => {
 						return (
 						<article key={`hybrid-${record.recordId}`} className="credential-card">
-							<h3>{record.credentialType}</h3>
+							<h3>{record.credential?.credentialDetails?.vaccineType || record.credentialType}</h3>
 							
 							<p><strong>Record ID:</strong> {record.recordId}</p>
 							<p><strong>CID:</strong> {record.cid}</p>
@@ -951,58 +1040,71 @@ const PatientDashboard: React.FC = () => {
 						<p><strong>Expires (UTC):</strong> {qrSession.expiresAtUtc || qrSession.expiresAt || 'Soon'}</p>
 						<p><strong>Server time (UTC):</strong> {qrSession.serverNowUtc || 'N/A'}</p>
 						<p><strong>Remaining (seconds):</strong> {qrSecondsRemaining}</p>
-						<div className="credential-qr-code-wrap">
-							<QRCodeSVG value={qrSession.qrPayload} size={220} includeMargin />
-						</div>
-						<p className="credential-qr-note">Only users logged in with verifier role can verify this QR token. If token is expired, generate a fresh QR from this card and verify immediately.</p>
+					<div className="credential-qr-code-wrap" ref={qrCodeRef}>
+						<QRCodeSVG value={qrSession.qrPayload} size={300} includeMargin level="H" />
+					</div>
+					<p className="credential-qr-note">Only users logged in with verifier role can verify this QR token. If token is expired, generate a fresh QR from this card and verify immediately.</p>
+					<div className="scanner-actions">
+						<button type="button" className="btn request" onClick={() => void downloadQrCode('credential-qr', qrCodeRef)}>Download QR</button>
 						<button type="button" className="btn request" onClick={closeQrModal}>Close</button>
 					</div>
 				</div>
-			) : null}
+			</div>
+		) : null}
 
-			{hybridQrPayload ? (
-				<div
-					className="modal-overlay"
-					onClick={() => {
-						setHybridQrPayload(null);
-						setHybridPayloadCopyStatus(null);
-					}}
-				>
-					<div className="credential-qr-modal" onClick={(event) => event.stopPropagation()}>
-						<h2>Hybrid Verification QR</h2>
-						<div className="credential-qr-code-wrap">
-							<QRCodeSVG value={hybridQrPayload} size={220} includeMargin />
-						</div>
-						<p><strong>Copyable Payload (testing):</strong></p>
-						<textarea
-							className="hybrid-payload-textarea"
-							value={hybridQrPayload}
-							readOnly
-						/>
-						<div className="scanner-actions" style={{ marginBottom: '8px' }}>
-							<button type="button" className="btn request" onClick={() => void copyHybridPayload()}>
-								Copy Payload
-							</button>
-						</div>
-						{hybridPayloadCopyStatus ? <p className="credential-qr-note">{hybridPayloadCopyStatus}</p> : null}
-						<p className="credential-qr-note">This QR includes contract address, record ID, CID, and hash for on-chain integrity validation.</p>
-						<button
-							type="button"
-							className="btn request"
-							onClick={() => {
-								setHybridQrPayload(null);
-								setHybridPayloadCopyStatus(null);
-							}}
-						>
-							Close
+		{hybridQrPayload ? (
+			<div
+				className="modal-overlay"
+				onClick={() => {
+					setHybridQrPayload(null);
+					setHybridPayloadCopyStatus(null);
+				}}
+			>
+				<div className="credential-qr-modal" onClick={(event) => event.stopPropagation()}>
+					<h2>Hybrid Verification QR</h2>
+					<div className="credential-qr-code-wrap" ref={hybridQrCodeRef}>
+						<QRCodeSVG value={hybridQrPayload} size={300} includeMargin level="H" />
+					</div>
+					<p><strong>Copyable Payload (testing):</strong></p>
+					<textarea
+						className="hybrid-payload-textarea"
+						value={hybridQrPayload}
+						readOnly
+					/>
+					<div className="scanner-actions" style={{ marginBottom: '8px' }}>
+						<button type="button" className="btn request" onClick={() => void copyHybridPayload()}>
+							Copy Payload
+						</button>
+						<button type="button" className="btn request" onClick={() => void downloadQrCode('hybrid-credential-qr', hybridQrCodeRef)}>
+							Download QR
 						</button>
 					</div>
+					{hybridPayloadCopyStatus ? <p className="credential-qr-note">{hybridPayloadCopyStatus}</p> : null}
+					<p className="credential-qr-note">This QR includes contract address, record ID, CID, and hash for on-chain integrity validation.</p>
+					<button
+						type="button"
+						className="btn request"
+						onClick={() => {
+							setHybridQrPayload(null);
+							setHybridPayloadCopyStatus(null);
+						}}
+					>
+						Close
+					</button>
 				</div>
-			) : null}
+			</div>
+		) : null}
 
 			<footer className="patient-footer">
 				<small>HealthChain • Patient portal</small>
 			</footer>
+
+			<InfoModal
+				open={showInfoModal}
+				title={infoModalTitle}
+				message={infoModalMessage}
+				onClose={() => setShowInfoModal(false)}
+			/>
 		</div>
 	);
 };

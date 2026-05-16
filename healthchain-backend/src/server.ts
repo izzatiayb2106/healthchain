@@ -16,11 +16,15 @@ async function startServer(){
 
   const app = express()
   
-  // Enable CORS for frontend
-  app.use(cors({
-    origin: 'http://localhost:5173', // Vite default port
-    credentials: true
-  }))
+  // Enable CORS for frontend - reflect request origin to allow any origin in dev
+  // NOTE: reflecting origin (origin: true) allows credentials while permitting requests
+  // from arbitrary origins. Avoid this in production; restrict origins appropriately.
+  app.use(
+    cors({
+      origin: true, // reflect request origin
+      credentials: true,
+    }),
+  )
   
   app.use(express.json())
 

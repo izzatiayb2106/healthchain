@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
-import { apiClient, loginWithJWT } from "../../services/authService";
+import {
+  apiClient,
+  hasPdpaConsent,
+  loginWithJWT,
+  logout,
+  setPdpaConsentAccepted,
+} from "../../services/authService";
+import PDPAConsentModal from "./PDPAConsentModal";
 
 declare global {
   interface Window {
@@ -16,6 +23,8 @@ const ProfessionalAccessForm: React.FC = () => {
   const [requestedRole, setRequestedRole] = useState<"doctor" | "verifier">("doctor");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPdpaModal, setShowPdpaModal] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
 
   const routeByRole = (role: string) => {
     if (role === "doctor") return "/doctor";
@@ -62,7 +71,17 @@ const ProfessionalAccessForm: React.FC = () => {
       });
 
       const authResult = await loginWithJWT(address, signature, message, trimmedProfessionalId);
-      navigate(routeByRole(authResult.role));
+      const targetRoute = routeByRole(authResult.role);
+      const requiresPdpaConsent =
+        authResult.role === "doctor" && Boolean(authResult.firstRegistration ?? authResult.didCreated);
+
+      if (requiresPdpaConsent) {
+        setPendingRoute(targetRoute);
+        setShowPdpaModal(true);
+        return;
+      }
+
+      navigate(targetRoute);
       setProfessionalId("");
     } catch (error: any) {
       const details = error?.response?.data?.details || error?.response?.data?.error;
@@ -70,6 +89,30 @@ const ProfessionalAccessForm: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handlePdpaAccept = () => {
+    (async () => {
+      try {
+        await apiClient.post('/auth/pdpa-consent', { version: 'v1' });
+      } catch (err) {
+        // Continue even if server-side recording fails; local consent still set for UX
+      }
+      setPdpaConsentAccepted();
+      const destination = pendingRoute;
+      setShowPdpaModal(false);
+      setPendingRoute(null);
+      if (destination) {
+        navigate(destination);
+      }
+    })();
+  };
+
+  const handlePdpaDecline = () => {
+    logout();
+    setShowPdpaModal(false);
+    setPendingRoute(null);
+    setError("PDPA consent is required to continue using the system.");
   };
 
   return (
@@ -117,6 +160,12 @@ const ProfessionalAccessForm: React.FC = () => {
           </form>
         </div>
       ) : null}
+
+      <PDPAConsentModal
+        open={showPdpaModal}
+        onAccept={handlePdpaAccept}
+        onDecline={handlePdpaDecline}
+      />
     </section>
   );
 };

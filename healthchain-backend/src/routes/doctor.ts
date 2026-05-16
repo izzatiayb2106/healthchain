@@ -315,7 +315,7 @@ export default function doctorRoutes() {
           issuedAt: entry.issuedAt,
           credentialType: entry.credentialType,
           issuerDid: entry.issuerDid,
-          credential: null,
+          credential: entry.credentialDetails ? { credentialDetails: entry.credentialDetails } : null,
           mode: "hybrid",
           cid: entry.cid,
           payloadHash: entry.payloadHash,

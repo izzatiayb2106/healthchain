@@ -180,7 +180,7 @@ export default function patientRoutes() {
               issuerName,
               issuerRole: issuerIdentity?.role || "unknown",
               issuedByDoctor: issuerIdentity?.role === "doctor",
-              credential: null,
+              credential: entry.credentialDetails ? { credentialDetails: entry.credentialDetails } : null,
               mode: "hybrid",
               cid: entry.cid,
               payloadHash: entry.payloadHash,

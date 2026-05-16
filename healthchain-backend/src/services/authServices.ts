@@ -1,5 +1,8 @@
 import { getIdentityMappingRepo } from '../db';
 import { IdentityMapping as DBIdentityMapping } from '../db/entities/IdentityMappingEntity';
+import { getPatientProfileByDid } from './patientProfileService';
+import { getDoctorProfileByDid } from './doctorProfileService';
+import { getVerifierProfileByDid } from './doctorProfileService';
 
 export type UserRole = 'pending' | 'patient' | 'doctor' | 'verifier' | 'admin'
 
@@ -13,6 +16,10 @@ type IdentityRecord = {
 	lockedAt?: string
 	createdAt: string
 	updatedAt: string
+	displayName?: string
+	pdpaConsentAccepted?: boolean
+	pdpaConsentAt?: string
+	pdpaConsentVersion?: string
 }
 
 function normalizeWallet(wallet: string) {
@@ -31,6 +38,9 @@ function dbIdentityToAPI(dbIdentity: DBIdentityMapping): IdentityRecord {
 		lockedAt: dbIdentity.lockedAt ? dbIdentity.lockedAt.toISOString() : undefined,
 		createdAt: dbIdentity.createdAt.toISOString(),
 		updatedAt: dbIdentity.updatedAt.toISOString(),
+		pdpaConsentAccepted: Boolean(dbIdentity.pdpaConsentAccepted),
+		pdpaConsentAt: dbIdentity.pdpaConsentAt ? dbIdentity.pdpaConsentAt.toISOString() : undefined,
+		pdpaConsentVersion: dbIdentity.pdpaConsentVersion || undefined,
 	}
 }
 
@@ -86,7 +96,40 @@ export async function setRole(wallet: string, role: UserRole): Promise<IdentityR
 export async function listIdentities(): Promise<IdentityRecord[]> {
 	const repo = getIdentityMappingRepo()
 	const identities = await repo.find()
-	return identities.map(dbIdentityToAPI)
+
+	// Enrich each identity with a displayName when available
+	const mapped = await Promise.all(
+		identities.map(async (db) => {
+			const base = dbIdentityToAPI(db);
+			let name: string | undefined = undefined;
+			try {
+				// Try patient profile first
+				const p = await getPatientProfileByDid(base.did);
+				if (p?.fullName) {
+					name = p.fullName;
+				} else {
+					// Try doctor profile
+					const d = await getDoctorProfileByDid(base.did);
+					if (d?.displayName) {
+						name = d.displayName;
+					} else {
+						// Try verifier profile (fullName)
+						try {
+							const v = await getVerifierProfileByDid(base.did);
+							if (v?.fullName) name = v.fullName;
+						} catch (_) {
+							// ignore
+						}
+					}
+				}
+			} catch (err) {
+				// ignore profile fetch errors
+			}
+			return { ...base, displayName: name };
+		})
+	);
+
+	return mapped
 }
 
 export async function setIdentityLock(wallet: string, locked: boolean, reason?: string): Promise<IdentityRecord> {
@@ -100,6 +143,23 @@ export async function setIdentityLock(wallet: string, locked: boolean, reason?: 
 	existing.locked = Boolean(locked)
 	existing.lockReason = locked ? String(reason || '').trim() || 'Locked by admin' : undefined
 	existing.lockedAt = locked ? new Date() : undefined
+	existing.updatedAt = new Date()
+
+	const saved = await repo.save(existing)
+	return dbIdentityToAPI(saved)
+}
+
+export async function setPdpaConsent(wallet: string, version?: string): Promise<IdentityRecord> {
+	const normalizedWallet = normalizeWallet(wallet)
+	const repo = getIdentityMappingRepo()
+	const existing = await repo.findOne({ where: { wallet: normalizedWallet } })
+	if (!existing) {
+		throw new Error('Identity not found')
+	}
+
+	existing.pdpaConsentAccepted = true
+	existing.pdpaConsentAt = new Date()
+	existing.pdpaConsentVersion = version ? String(version).trim() : undefined
 	existing.updatedAt = new Date()
 
 	const saved = await repo.save(existing)

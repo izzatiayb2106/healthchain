@@ -59,6 +59,9 @@ export class HybridCredential {
   @Column('datetime', { nullable: true })
   finalizedAt?: Date | null;
 
+  @Column('simple-json', { nullable: true })
+  credentialDetails?: Record<string, any> | null;
+
   @UpdateDateColumn()
   updatedAt!: Date;
 }
