@@ -140,34 +140,12 @@ function shortenHex(value: string, head = 10, tail = 8) {
 	return `${text.slice(0, head)}…${text.slice(-tail)}`;
 }
 
-const HomeIcon = () => (
-	<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-		<path d="M12 3 3 10v11h6v-7h6v7h6V10l-9-7Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-	</svg>
-);
-
-const BlockchainIcon = () => (
-	<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-		<path d="M8.5 8.5 12 6l3.5 2.5v5L12 16l-3.5-2.5v-5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-		<path d="M5 12l3.5 2.5M19 12l-3.5 2.5M12 6V3M12 21v-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-	</svg>
-);
-
-const SettingsIcon = () => (
-	<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-		<path d="M19 12.98v-1.96l-2.08-.69a5.93 5.93 0 0 0-.57-1.37l.99-1.98-1.38-1.38-1.98.99a5.93 5.93 0 0 0-1.37-.57L11.98 3h-1.96l-.69 2.08a5.93 5.93 0 0 0-1.37.57l-1.98-.99L4.6 6.04l.99 1.98a5.93 5.93 0 0 0-.57 1.37L3 10.02v1.96l2.08.69c.13.48.32.94.57 1.37l-.99 1.98 1.38 1.38 1.98-.99c.43.25.89.44 1.37.57l.69 2.08h1.96l.69-2.08c.48-.13.94-.32 1.37-.57l1.98.99 1.38-1.38-.99-1.98c.25-.43.44-.89.57-1.37L19 12.98Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-		<circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" strokeWidth="1.6" />
-	</svg>
-);
-
-type DashboardSection = 'home' | 'blockchain' | 'settings';
-
 const PatientDashboard: React.FC = () => {
 	const [profile, setProfile] = useState<PatientProfile | null>(null);
 	const [profileLoading, setProfileLoading] = useState(true);
 	const [profileError, setProfileError] = useState<string | null>(null);
-	const [activeSection, setActiveSection] = useState<DashboardSection>('home');
 	const [showOnboarding, setShowOnboarding] = useState(false);
+	const [showEditProfile, setShowEditProfile] = useState(false);
 	const [profileForm, setProfileForm] = useState(emptyProfileForm);
 	const [savingProfile, setSavingProfile] = useState(false);
 
@@ -781,8 +759,7 @@ const PatientDashboard: React.FC = () => {
 			setProfile(saved);
 			hydrateProfileForm(saved);
 			setShowOnboarding(false);
-			setActiveSection('home');
-			void loadDashboardData();
+			setShowEditProfile(false);
 		} catch (error: any) {
 			const detail = error?.response?.data?.error || error?.message || 'Failed to save patient profile';
 			setProfileError(detail);
@@ -966,42 +943,12 @@ const PatientDashboard: React.FC = () => {
 		}
 	};
 
-	const dashboardTabs: Array<{
-		key: DashboardSection;
-		label: string;
-		icon: React.ReactNode;
-	}> = [
-		{ key: 'home', label: 'Home', icon: <HomeIcon /> },
-		{ key: 'blockchain', label: 'Audit', icon: <BlockchainIcon /> },
-		{ key: 'settings', label: 'Settings', icon: <SettingsIcon /> },
-	];
-
 	return (
 		<div className="patient-dashboard">
 			<header className="patient-header">
-				<div className="patient-header-copy">
-					<h1>{profile?.fullName ? `Welcome, ${profile.fullName}` : 'Patient Dashboard'}</h1>
-					
-				</div>
+				<h1>{profile?.fullName ? `Welcome, ${profile.fullName}` : 'Patient Dashboard'}</h1>
 				<button className="btn logout" onClick={handleLogout}>Logout</button>
 			</header>
-
-			<nav className="patient-nav" aria-label="Patient dashboard sections">
-				{dashboardTabs.map((tab) => (
-					<button
-						key={tab.key}
-						type="button"
-						className={`patient-nav-button ${activeSection === tab.key ? 'is-active' : ''}`}
-						aria-pressed={activeSection === tab.key}
-						onClick={() => setActiveSection(tab.key)}
-					>
-						<span className="patient-nav-icon" aria-hidden="true">{tab.icon}</span>
-						<span className="patient-nav-text">
-							<strong>{tab.label}</strong>
-						</span>
-					</button>
-				))}
-			</nav>
 
 			{profileError ? <div className="patient-error">{profileError}</div> : null}
 
@@ -1009,231 +956,275 @@ const PatientDashboard: React.FC = () => {
 				<section className="patient-card"><p>Loading your profile...</p></section>
 			) : null}
 
-			{activeSection === 'home' ? (
-				<>
-					{!showOnboarding && profile ? (
-						<section className="patient-card">
-							<h2>My Profile</h2>
-							<div className="patient-profile-grid">
-								<div><strong>Name:</strong> {profile.fullName || '-'}</div>
-								<div><strong>Date of birth:</strong> {profile.dateOfBirth || '-'}</div>
-								<div><strong>Blood type:</strong> {profile.bloodType || '-'}</div>
-								<div><strong>Phone:</strong> {profile.phone || '-'}</div>
-								<div><strong>Email:</strong> {profile.email || '-'}</div>
-								<div><strong>Emergency Contact:</strong> {profile.emergencyContact || '-'}</div>
-							</div>
-						</section>
-					) : (
-						<section className="patient-card">
-							<h2>Your profile is not ready yet</h2>
-							<p>Open Settings to complete your registration and edit your profile details.</p>
-						</section>
-					)}
+			{showOnboarding ? (
+				<section className="patient-card">
+					<h2>Complete your patient profile</h2>
+					<p>This one-time onboarding personalizes your dashboard and secures your medical credential feed.</p>
+					<form className="patient-form" onSubmit={(event) => submitProfile(event, 'create')}>
+						<label htmlFor="fullName">Full name *</label>
+						<input id="fullName" name="fullName" value={profileForm.fullName} onChange={handleProfileInput} required />
 
-					<section className="patient-card">
-						<h2>Vaccination Certificates</h2>
-						<div className="scanner-actions">
-							<button className="btn request" type="button" onClick={() => void loadHybridRecords()} disabled={hybridLoading}>
-								{hybridLoading ? 'Refreshing records...' : 'Refresh'}
-							</button>
-						</div>
-						<p><strong>On-chain:</strong> {hybridRecords.length} record(s)</p>
-						{qrError ? <div className="doctor-apply-error">{qrError}</div> : null}
-						{credentialsError ? <div className="doctor-apply-error">{credentialsError}</div> : null}
-						{hybridError ? <div className="doctor-apply-error">{hybridError}</div> : null}
-						{credentialsLoading || hybridLoading ? <p>Loading credentials...</p> : null}
-						{!credentialsLoading && !hybridLoading && hybridRecords.length === 0 ? <p>No credentials found yet.</p> : null}
+						<label htmlFor="dateOfBirth">Date of birth *</label>
+						<input id="dateOfBirth" name="dateOfBirth" type="date" value={profileForm.dateOfBirth} onChange={handleProfileInput} required />
 
-						<div className="credential-list">
-							{credentials.filter((entry) => entry.mode !== 'hybrid').map((entry, index) => {
-								const subject = parseCredentialSubject(entry.credential);
-								const isGeneratingQr = qrLoadingForIssuedAt === entry.issuedAt;
-								const isLegacy = entry.mode !== 'hybrid';
-								return (
-									<article
-										key={`${entry.issuedAt}-${index}`}
-										className={`credential-card ${isLegacy ? 'credential-card-clickable' : ''}`}
-										onClick={isLegacy ? (() => void openCredentialQr(entry)) : undefined}
-									>
-										<h3>{entry.credential?.credentialDetails?.vaccineType || entry.credentialType}</h3>
-										<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
-										<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
-										{isLegacy ? (
-											<>
-												<p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
-												{subject?.name ? <p><strong>Subject name:</strong> {String(subject.name)}</p> : null}
-												<p className="credential-qr-hint">{isGeneratingQr ? 'Generating secure QR...' : 'Tap to generate verifier QR'}</p>
-											</>
-										) : (
-											<>
-												<p><strong>Record ID:</strong> {entry.recordId || 'Pending'}</p>
-												<p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
-												<p><strong>Payload Hash:</strong> {entry.payloadHash || 'Not available'}</p>
-											</>
-										)}
-									</article>
-								);
-							})}
-							{hybridRecords.map((record) => (
-								<article key={`hybrid-${record.recordId}`} className="credential-card">
-									<h3>{record.credential?.credentialDetails?.vaccineType || record.credentialType}</h3>
-									<p><strong>Record ID:</strong> {record.recordId}</p>
-									<p><strong>CID:</strong> {record.cid}</p>
-									<p><strong>Payload Hash:</strong> {record.payloadHash}</p>
-									<p><strong>Issued:</strong> {new Date(record.issuedAt).toLocaleString()}</p>
-									<div className="scanner-actions">
-										<button type="button" className="btn request" onClick={() => void decryptHybridRecord(record)} disabled={selectedHybridRecordId === record.recordId}>
-											{selectedHybridRecordId === record.recordId ? 'Decrypting...' : 'Decrypt with Wallet'}
-										</button>
-										<button type="button" className="btn request" onClick={() => openHybridQr(record)}>
-											Generate Verification QR
-										</button>
-									</div>
-								</article>
-							))}
-						</div>
-					</section>
-				</>
-			) : null}
+						<label htmlFor="bloodType">Blood type</label>
+						<select id="bloodType" name="bloodType" value={profileForm.bloodType} onChange={handleProfileInput}>
+							<option value="">Select blood type</option>
+							<option value="A+">A+</option>
+							<option value="A-">A-</option>
+							<option value="B+">B+</option>
+							<option value="B-">B-</option>
+							<option value="AB+">AB+</option>
+							<option value="AB-">AB-</option>
+							<option value="O+">O+</option>
+							<option value="O-">O-</option>
+						</select>
 
-			{activeSection === 'blockchain' ? (
-				<section className="patient-card blockchain-panel">
-					<h2>Blockchain Anchoring Trail</h2>
-					<p>Live view of finalized anchors. Each row maps a finalized hybrid credential to the block that included its transaction.</p>
-					<div className="blockchain-summary">
-						<div className="blockchain-summary-item">
-							<span className="blockchain-summary-label">RPC Server</span>
-							<span className="blockchain-summary-value">{blockchainSummary?.rpcUrl || CHAIN_READ_RPC_URL}</span>
-						</div>
-						<div className="blockchain-summary-item">
-							<span className="blockchain-summary-label">Chain ID</span>
-							<span className="blockchain-summary-value">{blockchainSummary?.chainId || 'N/A'}</span>
-						</div>
-						<div className="blockchain-summary-item">
-							<span className="blockchain-summary-label">Current Block</span>
-							<span className="blockchain-summary-value">{blockchainSummary?.currentBlockNumber ?? 'N/A'}</span>
-						</div>
-						<div className="blockchain-summary-item">
-							<span className="blockchain-summary-label">Anchored Records</span>
-							<span className="blockchain-summary-value">{blockchainSummary?.anchoredCount ?? 0}</span>
-						</div>
-					</div>
-					{blockchainError ? <div className="doctor-apply-error">{blockchainError}</div> : null}
-					{blockchainLoading ? <p>Loading blockchain blocks...</p> : null}
-					{!blockchainLoading && blockchainBlocks.length === 0 ? <p></p> : null}
-					{blockchainBlocks.length > 0 ? (
-						<div className="blockchain-table-wrap">
-							<table className="blockchain-table">
-								<thead>
-									<tr>
-										<th>Status</th>
-										<th>Block</th>
-										<th>Time</th>
-										<th>Tx Hash</th>
-										<th>Record ID</th>
-										<th>CID</th>
-										<th>Gas Used</th>
-									</tr>
-								</thead>
-								<tbody>
-									{blockchainBlocks.map((block) => (
-										<tr key={`${block.recordId}-${block.txHash || block.cid}`}>
-											<td>
-												<span className={`blockchain-status blockchain-status-${block.status.toLowerCase()}`}>
-													{block.status}
-												</span>
-											</td>
-											<td>
-												<div className="blockchain-cell-main">
-													<strong>{block.blockNumber ?? 'Pending'}</strong>
-													<small>{shortenHex(block.blockHash || block.parentHash || block.txHash)}</small>
-												</div>
-											</td>
-											<td>{block.timestamp ? new Date(block.timestamp).toLocaleString() : 'Waiting for confirmation'}</td>
-											<td title={block.txHash || 'Pending'}>{shortenHex(block.txHash)}</td>
-											<td>{shortenHex(block.recordId, 6, 4)}</td>
-											<td title={block.cid}>{shortenHex(block.cid)}</td>
-											<td>{block.gasUsed || 'N/A'}</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						</div>
-					) : null}
+						<label htmlFor="phone">Phone</label>
+						<input id="phone" name="phone" value={profileForm.phone} onChange={handleProfileInput} />
+
+						<label htmlFor="email">Email</label>
+						<input id="email" name="email" type="email" value={profileForm.email} onChange={handleProfileInput} />
+
+						<label htmlFor="emergencyContact">Emergency contact</label>
+						<input id="emergencyContact" name="emergencyContact" value={profileForm.emergencyContact} onChange={handleProfileInput} />
+
+						<button className="btn request" type="submit" disabled={savingProfile}>
+							{savingProfile ? 'Saving profile...' : 'Save profile'}
+						</button>
+					</form>
 				</section>
 			) : null}
 
-			{activeSection === 'settings' ? (
-				<>
-					<section className="patient-card">
-						<h2>{showOnboarding || !profile ? 'Complete your patient profile' : 'Edit Patient Profile'}</h2>
-						<p>
-							{showOnboarding || !profile
-								? 'This one-time onboarding personalizes your dashboard and secures your medical credential feed.'
-								: ''}
-						</p>
-						<form className="patient-form" onSubmit={(event) => submitProfile(event, showOnboarding || !profile ? 'create' : 'update')}>
-							<label htmlFor={showOnboarding || !profile ? 'fullName' : 'editFullName'}>Full name *</label>
-							<input id={showOnboarding || !profile ? 'fullName' : 'editFullName'} name="fullName" value={profileForm.fullName} onChange={handleProfileInput} required />
-
-							<label htmlFor={showOnboarding || !profile ? 'dateOfBirth' : 'editDateOfBirth'}>Date of birth *</label>
-							<input id={showOnboarding || !profile ? 'dateOfBirth' : 'editDateOfBirth'} name="dateOfBirth" type="date" value={profileForm.dateOfBirth} onChange={handleProfileInput} required />
-
-							<label htmlFor={showOnboarding || !profile ? 'bloodType' : 'editBloodType'}>Blood type</label>
-							<select id={showOnboarding || !profile ? 'bloodType' : 'editBloodType'} name="bloodType" value={profileForm.bloodType} onChange={handleProfileInput}>
-								<option value="">Select blood type</option>
-								<option value="A+">A+</option>
-								<option value="A-">A-</option>
-								<option value="B+">B+</option>
-								<option value="B-">B-</option>
-								<option value="AB+">AB+</option>
-								<option value="AB-">AB-</option>
-								<option value="O+">O+</option>
-								<option value="O-">O-</option>
-							</select>
-
-							<label htmlFor={showOnboarding || !profile ? 'phone' : 'editPhone'}>Phone</label>
-							<input id={showOnboarding || !profile ? 'phone' : 'editPhone'} name="phone" value={profileForm.phone} onChange={handleProfileInput} />
-
-							<label htmlFor={showOnboarding || !profile ? 'email' : 'editEmail'}>Email</label>
-							<input id={showOnboarding || !profile ? 'email' : 'editEmail'} name="email" type="email" value={profileForm.email} onChange={handleProfileInput} />
-
-							<label htmlFor={showOnboarding || !profile ? 'emergencyContact' : 'editEmergencyContact'}>Emergency contact</label>
-							<input id={showOnboarding || !profile ? 'emergencyContact' : 'editEmergencyContact'} name="emergencyContact" value={profileForm.emergencyContact} onChange={handleProfileInput} />
-
-							<button className="btn request" type="submit" disabled={savingProfile}>
-								{savingProfile ? (showOnboarding || !profile ? 'Saving profile...' : 'Updating profile...') : (showOnboarding || !profile ? 'Save profile' : 'Update profile')}
-							</button>
-						</form>
-					</section>
-
-					<section className="patient-card">
-						<h2>Patient Registration</h2>
-						<p>Enter doctor wallet address to register with the doctor.</p>
-						<button className="btn request" onClick={() => setShowDoctorWalletInput((prev) => !prev)}>
-							{showDoctorWalletInput ? 'Cancel' : 'Enter Doctor Wallet'}
-						</button>
-
-						{showDoctorWalletInput ? (
-							<form className="doctor-wallet-form" onSubmit={registerWithDoctor}>
-								<label htmlFor="doctorWallet">Doctor Wallet Address</label>
-								<input
-									id="doctorWallet"
-									type="text"
-									value={doctorWalletInput}
-									onChange={(event) => setDoctorWalletInput(event.target.value)}
-									placeholder="Paste doctor's wallet address here"
-									disabled={registeringWithDoctor}
-								/>
-								{doctorRegistrationError ? <div className="doctor-apply-error">{doctorRegistrationError}</div> : null}
-								<button type="submit" className="btn request" disabled={registeringWithDoctor || !doctorWalletInput.trim()}>
-									{registeringWithDoctor ? 'Registering...' : 'Register with Doctor'}
-								</button>
-							</form>
-						) : null}
-					</section>
-				</>
+			{!showOnboarding && profile ? (
+				<section className="patient-card">
+					<h2>My Profile</h2>
+					<div className="patient-profile-grid">
+						<div><strong>Name:</strong> {profile.fullName || '-'}</div>
+						<div><strong>Date of birth:</strong> {profile.dateOfBirth || '-'}</div>
+						<div><strong>Blood type:</strong> {profile.bloodType || '-'}</div>
+						<div><strong>Phone:</strong> {profile.phone || '-'}</div>
+						<div><strong>Email:</strong> {profile.email || '-'}</div>
+						<div><strong>Emergency Contact:</strong> {profile.emergencyContact || '-'}</div>
+					</div>
+					<button className="btn request" onClick={() => setShowEditProfile((prev) => !prev)}>
+						{showEditProfile ? 'Close Profile Editor' : 'Edit Profile'}
+					</button>
+				</section>
 			) : null}
+
+			{showEditProfile && profile ? (
+				<section className="patient-card">
+					<h2>Edit Patient Profile</h2>
+					<form className="patient-form" onSubmit={(event) => submitProfile(event, 'update')}>
+						<label htmlFor="editFullName">Full name *</label>
+						<input id="editFullName" name="fullName" value={profileForm.fullName} onChange={handleProfileInput} required />
+
+						<label htmlFor="editDateOfBirth">Date of birth *</label>
+						<input id="editDateOfBirth" name="dateOfBirth" type="date" value={profileForm.dateOfBirth} onChange={handleProfileInput} required />
+
+						<label htmlFor="editBloodType">Blood type</label>
+						<select id="editBloodType" name="bloodType" value={profileForm.bloodType} onChange={handleProfileInput}>
+							<option value="">Select blood type</option>
+							<option value="A+">A+</option>
+							<option value="A-">A-</option>
+							<option value="B+">B+</option>
+							<option value="B-">B-</option>
+							<option value="AB+">AB+</option>
+							<option value="AB-">AB-</option>
+							<option value="O+">O+</option>
+							<option value="O-">O-</option>
+						</select>
+
+						<label htmlFor="editPhone">Phone</label>
+						<input id="editPhone" name="phone" value={profileForm.phone} onChange={handleProfileInput} />
+
+						<label htmlFor="editEmail">Email</label>
+						<input id="editEmail" name="email" type="email" value={profileForm.email} onChange={handleProfileInput} />
+
+						<label htmlFor="editEmergencyContact">Emergency contact</label>
+						<input id="editEmergencyContact" name="emergencyContact" value={profileForm.emergencyContact} onChange={handleProfileInput} />
+
+						<button className="btn request" type="submit" disabled={savingProfile}>
+							{savingProfile ? 'Updating profile...' : 'Update profile'}
+						</button>
+					</form>
+				</section>
+			) : null}
+
+			<section className="patient-card">
+				<h2>Patient Registration</h2>
+				<p>Enter doctor wallet address to register with the doctor.</p>
+				<button className="btn request" onClick={() => setShowDoctorWalletInput((prev) => !prev)}>
+					{showDoctorWalletInput ? 'Cancel' : 'Enter Doctor Wallet'}
+				</button>
+
+				{showDoctorWalletInput ? (
+					<form className="doctor-wallet-form" onSubmit={registerWithDoctor}>
+						<label htmlFor="doctorWallet">Doctor Wallet Address</label>
+						<input
+							id="doctorWallet"
+							type="text"
+							value={doctorWalletInput}
+							onChange={(event) => setDoctorWalletInput(event.target.value)}
+							placeholder="Paste doctor's wallet address here"
+							disabled={registeringWithDoctor}
+						/>
+						{doctorRegistrationError ? <div className="doctor-apply-error">{doctorRegistrationError}</div> : null}
+						<button type="submit" className="btn request" disabled={registeringWithDoctor || !doctorWalletInput.trim()}>
+							{registeringWithDoctor ? 'Registering...' : 'Register with Doctor'}
+						</button>
+					</form>
+				) : null}
+			</section>
+
+			<section className="patient-card">
+				<h2>Vaccination Certificates</h2>
+
+				<div className="scanner-actions">
+					<button className="btn request" type="button" onClick={() => void loadHybridRecords()} disabled={hybridLoading}>
+						{hybridLoading ? 'Refreshing records...' : 'Refresh'}
+					</button>
+				</div>
+				<p>
+					<strong>On-chain:</strong> {hybridRecords.length} record(s)
+				</p>
+				{qrError ? <div className="doctor-apply-error">{qrError}</div> : null}
+				{credentialsError ? <div className="doctor-apply-error">{credentialsError}</div> : null}
+				{hybridError ? <div className="doctor-apply-error">{hybridError}</div> : null}
+				{credentialsLoading || hybridLoading ? <p>Loading credentials...</p> : null}
+				{!credentialsLoading && !hybridLoading && hybridRecords.length === 0 ? (
+					<p>No credentials found yet.</p>
+				) : null}
+
+				<div className="credential-list">
+					{credentials.filter((entry) => entry.mode !== 'hybrid').map((entry, index) => {
+						const subject = parseCredentialSubject(entry.credential);
+						const isGeneratingQr = qrLoadingForIssuedAt === entry.issuedAt;
+						const isLegacy = entry.mode !== 'hybrid';
+						return (
+							<article
+								key={`${entry.issuedAt}-${index}`}
+								className={`credential-card ${isLegacy ? 'credential-card-clickable' : ''}`}
+								onClick={isLegacy ? (() => void openCredentialQr(entry)) : undefined}
+							>
+								<h3>{entry.credential?.credentialDetails?.vaccineType || entry.credentialType}</h3>
+						
+								<p><strong>Issued:</strong> {new Date(entry.issuedAt).toLocaleString()}</p>
+								<p><strong>Doctor:</strong> {entry.issuerName || 'Unknown doctor'}</p>
+								{isLegacy ? (
+									<>
+										<p><strong>Vaccine Type:</strong> {subject?.vaccineType ? String(subject.vaccineType) : 'Not specified'}</p>
+										{subject?.name ? <p><strong>Subject name:</strong> {String(subject.name)}</p> : null}
+										<p className="credential-qr-hint">{isGeneratingQr ? 'Generating secure QR...' : 'Tap to generate verifier QR'}</p>
+									</>
+								) : (
+									<>
+										<p><strong>Record ID:</strong> {entry.recordId || 'Pending'}</p>
+										<p><strong>CID:</strong> {entry.cid || 'Not available'}</p>
+										<p><strong>Payload Hash:</strong> {entry.payloadHash || 'Not available'}</p>
+									</>
+								)}
+							</article>
+						);
+					})}
+
+					{hybridRecords.map((record) => {
+						return (
+						<article key={`hybrid-${record.recordId}`} className="credential-card">
+							<h3>{record.credential?.credentialDetails?.vaccineType || record.credentialType}</h3>
+							
+							<p><strong>Record ID:</strong> {record.recordId}</p>
+							<p><strong>CID:</strong> {record.cid}</p>
+							<p><strong>Payload Hash:</strong> {record.payloadHash}</p>
+							<p><strong>Issued:</strong> {new Date(record.issuedAt).toLocaleString()}</p>
+							<div className="scanner-actions">
+								<button
+									type="button"
+									className="btn request"
+									onClick={() => void decryptHybridRecord(record)}
+									disabled={selectedHybridRecordId === record.recordId}
+								>
+									{selectedHybridRecordId === record.recordId ? 'Decrypting...' : 'Decrypt with Wallet'}
+								</button>
+								<button type="button" className="btn request" onClick={() => openHybridQr(record)}>
+									Generate Verification QR
+								</button>
+							</div>
+						</article>
+						);
+					})}
+				</div>
+			</section>
+
+			<section className="patient-card blockchain-panel">
+				<h2>Blockchain Anchoring Trail</h2>
+				<p>
+					Live view of finalized anchors. Each row maps a finalized hybrid credential to the block that included its transaction.
+				</p>
+				<div className="blockchain-summary">
+					<div className="blockchain-summary-item">
+						<span className="blockchain-summary-label">RPC Server</span>
+						<span className="blockchain-summary-value">{blockchainSummary?.rpcUrl || CHAIN_READ_RPC_URL}</span>
+					</div>
+					<div className="blockchain-summary-item">
+						<span className="blockchain-summary-label">Chain ID</span>
+						<span className="blockchain-summary-value">{blockchainSummary?.chainId || 'N/A'}</span>
+					</div>
+					<div className="blockchain-summary-item">
+						<span className="blockchain-summary-label">Current Block</span>
+						<span className="blockchain-summary-value">{blockchainSummary?.currentBlockNumber ?? 'N/A'}</span>
+					</div>
+					<div className="blockchain-summary-item">
+						<span className="blockchain-summary-label">Anchored Records</span>
+						<span className="blockchain-summary-value">{blockchainSummary?.anchoredCount ?? 0}</span>
+					</div>
+				</div>
+				{blockchainError ? <div className="doctor-apply-error">{blockchainError}</div> : null}
+				{blockchainLoading ? <p>Loading blockchain blocks...</p> : null}
+				{!blockchainLoading && blockchainBlocks.length === 0 ? (
+					<p></p>
+				) : null}
+				{blockchainBlocks.length > 0 ? (
+					<div className="blockchain-table-wrap">
+						<table className="blockchain-table">
+							<thead>
+								<tr>
+									<th>Status</th>
+									<th>Block</th>
+									<th>Time</th>
+									<th>Tx Hash</th>
+									<th>Record ID</th>
+									<th>CID</th>
+									<th>Gas Used</th>
+								</tr>
+							</thead>
+							<tbody>
+								{blockchainBlocks.map((block) => (
+									<tr key={`${block.recordId}-${block.txHash || block.cid}`}>
+										<td>
+											<span className={`blockchain-status blockchain-status-${block.status.toLowerCase()}`}>
+												{block.status}
+											</span>
+										</td>
+										<td>
+											<div className="blockchain-cell-main">
+												<strong>{block.blockNumber ?? 'Pending'}</strong>
+												<small>{shortenHex(block.blockHash || block.parentHash || block.txHash)}</small>
+											</div>
+										</td>
+										<td>{block.timestamp ? new Date(block.timestamp).toLocaleString() : 'Waiting for confirmation'}</td>
+										<td title={block.txHash || 'Pending'}>{shortenHex(block.txHash)}</td>
+										<td>{shortenHex(block.recordId, 6, 4)}</td>
+										<td title={block.cid}>{shortenHex(block.cid)}</td>
+										<td>{block.gasUsed || 'N/A'}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : null}
+			</section>
 
 				{hybridDecrypted ? (
 					<div

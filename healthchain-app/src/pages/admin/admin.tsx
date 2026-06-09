@@ -189,7 +189,8 @@ const AdminDashboard: React.FC = () => {
       console.error(err);
       const message = err?.response?.data?.error || "Failed to lock user";
       setError(message);
-      setUpdatingWallet(null);
+    } finally {
+      setUpdatingWallet((current) => (current === selectedWalletForLock ? null : current));
     }
   };
 
@@ -440,7 +441,7 @@ const AdminDashboard: React.FC = () => {
                   </p>
                   <div style={{ marginTop: 16 }}>
                     <label htmlFor="lock-reason-input">
-                      <strong>Lock reason (optional):</strong>
+                      <strong>Lock Reason:</strong>
                     </label>
                     <textarea
                       id="lock-reason-input"

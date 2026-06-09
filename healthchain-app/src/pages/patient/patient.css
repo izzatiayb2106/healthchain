@@ -74,6 +74,19 @@
 	border-bottom: 1px solid rgba(155, 142, 199, 0.2);
 }
 
+.patient-header-copy {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.patient-header-copy p {
+	margin: 0;
+	color: var(--patient-muted);
+	font-size: 0.95rem;
+	line-height: 1.45;
+}
+
 .patient-header h1 {
 	margin: 0;
 	font-size: clamp(1.7rem, 1.15rem + 1.7vw, 2.6rem);
@@ -85,6 +98,84 @@
 
 .patient-header .btn.logout {
 	min-width: 110px;
+}
+
+.patient-nav {
+	position: relative;
+	z-index: 1;
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+	margin: 0 0 18px;
+}
+
+.patient-nav-button {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 14px 16px;
+	border-radius: 18px;
+	border: 1px solid rgba(155, 142, 199, 0.2);
+	background: rgba(255, 255, 255, 0.68);
+	box-shadow: var(--patient-shadow-soft);
+	color: var(--patient-ink);
+	text-align: left;
+	cursor: pointer;
+	transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.patient-nav-button:hover {
+	transform: translateY(-1px);
+	border-color: rgba(131, 118, 180, 0.34);
+	background: rgba(255, 255, 255, 0.88);
+}
+
+.patient-nav-button.is-active {
+	background: linear-gradient(135deg, rgba(180, 211, 217, 0.34), rgba(189, 166, 206, 0.32));
+	border-color: rgba(125, 112, 173, 0.42);
+	box-shadow: 0 18px 34px rgba(82, 67, 114, 0.16);
+}
+
+.patient-nav-icon {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 42px;
+	height: 42px;
+	border-radius: 14px;
+	background: rgba(255, 255, 255, 0.78);
+	box-shadow: inset 0 0 0 1px rgba(155, 142, 199, 0.16);
+	color: var(--patient-action-strong);
+}
+
+.patient-nav-icon svg {
+	width: 22px;
+	height: 22px;
+}
+
+.patient-nav-text {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+
+.patient-nav-text strong {
+	font-size: 0.95rem;
+	font-weight: 800;
+	line-height: 1.15;
+}
+
+.patient-nav-text small {
+	font-size: 0.8rem;
+	line-height: 1.35;
+	color: var(--patient-muted);
+}
+
+.patient-section-stack {
+	display: grid;
+	gap: 18px;
 }
 
 .patient-error,
@@ -720,6 +811,17 @@
 		border-radius: 22px;
 	}
 
+	.patient-nav {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 8px;
+	}
+
+	.patient-nav-button {
+		min-width: 0;
+		padding: 12px 10px;
+		gap: 10px;
+	}
+
 	.patient-profile-grid,
 	.decrypted-subject-grid,
 	.credential-list {
@@ -748,6 +850,10 @@
 	.patient-header {
 		flex-direction: column;
 		align-items: flex-start;
+	}
+
+	.patient-header-copy {
+		width: 100%;
 	}
 
 	.patient-header .btn.logout {
