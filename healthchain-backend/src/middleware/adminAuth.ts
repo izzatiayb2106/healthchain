@@ -19,6 +19,8 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
+    req.user = payload
+
     const wallet = String(payload.wallet || '').trim().toLowerCase()
     if (!wallet) {
       return res.status(401).json({ error: 'Invalid token payload' })

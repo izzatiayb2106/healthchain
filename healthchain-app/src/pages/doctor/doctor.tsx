@@ -79,18 +79,17 @@ const DoctorDashboard: React.FC = () => {
 
     const [showIssueCredentialModal, setShowIssueCredentialModal] = useState(false);
     const [vaccineForm, setVaccineForm] = useState(initialVaccineForm);
-    const [manualPatientWallet, setManualPatientWallet] = useState('');
     const [selectedPatient, setSelectedPatient] = useState<{ wallet: string; did: string } | null>(null);
     const [pendingPatients, setPendingPatients] = useState<PendingPatient[]>([]);
     const [credentialLoading, setCredentialLoading] = useState(false);
     const [credentialError, setCredentialError] = useState<string | null>(null);
-    const [resolvingWallet, setResolvingWallet] = useState(false);
     const [removingPatientWallet, setRemovingPatientWallet] = useState<string | null>(null);
     const [selectedPatientCredentials, setSelectedPatientCredentials] = useState<IssuedCredentialEntry[]>([]);
     const [patientCredentialsLoading, setPatientCredentialsLoading] = useState(false);
     const [patientCredentialsError, setPatientCredentialsError] = useState<string | null>(null);
     const [showCredentialResultModal, setShowCredentialResultModal] = useState(false);
     const [credentialResultData, setCredentialResultData] = useState<any>(null);
+    const [walletCopyStatus, setWalletCopyStatus] = useState<string | null>(null);
 
     const isValidAvatarUrl = (value: string) => {
         if (!value.trim()) return true;
@@ -215,36 +214,22 @@ const DoctorDashboard: React.FC = () => {
         }
     };
 
-    const resolvePatientWallet = async () => {
-        const wallet = manualPatientWallet.trim().toLowerCase();
+    const copyDoctorWallet = async () => {
+        const wallet = profile?.wallet?.trim();
         if (!wallet) {
-            setCredentialError('Please enter a wallet address');
+            setWalletCopyStatus('Doctor wallet is not available yet');
             return;
         }
 
         try {
-            setResolvingWallet(true);
-            setCredentialError(null);
-
-            const response = await apiClient.post(
-                '/doctor/pending-patients',
-                { patientWallet: wallet, patientDid: wallet }
-            );
-
-            const patients = response.data?.pendingPatients?.patients || [];
-            const found = patients.find((p: any) => p.patientWallet === wallet);
-            if (found) {
-                await prefillPatientForm({ wallet: found.patientWallet, did: found.patientDid });
-                const enriched = await enrichPendingPatientsWithNames(patients);
-                setPendingPatients(enriched);
-                setManualPatientWallet('');
-            }
-        } catch (error: any) {
-            const detail = error?.response?.data?.error || error?.message || 'Failed to resolve patient';
-            setCredentialError(detail);
-        } finally {
-            setResolvingWallet(false);
+            await navigator.clipboard.writeText(wallet);
+            setWalletCopyStatus('Wallet copied');
+        } catch (error) {
+            console.error('Failed to copy doctor wallet:', error);
+            setWalletCopyStatus('Copy failed');
         }
+
+        window.setTimeout(() => setWalletCopyStatus(null), 1800);
     };
 
     const removePatient = async (patientWallet: string) => {
@@ -513,8 +498,21 @@ const DoctorDashboard: React.FC = () => {
                 }
             };
 
+            const handlePendingPatientsUpdated = () => {
+                console.log('[SSE] Received pending-patients-updated event, reloading pending patients...');
+                void loadPendingPatients();
+            };
+
+            const handleAccountLocked = async () => {
+                console.log('[SSE] Received account-locked event, logging out doctor...');
+                await logoutWithAudit();
+                window.location.href = '/login?error=account-locked';
+            };
+
             eventSource.addEventListener('credential-issued', handleCredentialIssued);
             eventSource.addEventListener('credential-finalized', handleCredentialFinalized);
+            eventSource.addEventListener('pending-patients-updated', handlePendingPatientsUpdated);
+            eventSource.addEventListener('account-locked', handleAccountLocked as EventListener);
 
             eventSource.addEventListener('error', (error: any) => {
                 console.error('[SSE] Connection error:', error);
@@ -525,6 +523,8 @@ const DoctorDashboard: React.FC = () => {
                 console.log('[SSE] Closing connection');
                 eventSource.removeEventListener('credential-issued', handleCredentialIssued);
                 eventSource.removeEventListener('credential-finalized', handleCredentialFinalized);
+                eventSource.removeEventListener('pending-patients-updated', handlePendingPatientsUpdated);
+                eventSource.removeEventListener('account-locked', handleAccountLocked as EventListener);
                 eventSource.close();
             };
         } catch (error) {
@@ -633,11 +633,16 @@ const DoctorDashboard: React.FC = () => {
     return (
         <div className="doctor-dashboard">
             <header className="dd-header">
-                <h1 className="dd-title">{profile?.displayName ? `Welcome, ${profile.displayName}` : 'Doctor Dashboard'}</h1>
+                <h1 className="dd-title">Doctor Dashboard</h1>
                 <button className="btn" onClick={handleLogout}>Logout</button>
             </header>
 
             {profileError ? <div className="doctor-error">{profileError}</div> : null}
+            {credentialError ? (
+                <div className="doctor-error credential-error-banner">
+                    <strong>Credential issuance error:</strong> {credentialError}
+                </div>
+            ) : null}
 
             {profileLoading ? (
                 <section className="doctor-info">
@@ -769,23 +774,21 @@ const DoctorDashboard: React.FC = () => {
             <section className="credential-issuance-section">
                 <h2>Issue Credentials</h2>
 
-                <div className="manual-patient-input">
-                    <h3>Manually add patient by wallet</h3>
-                    <div className="manual-input-form">
-                        <input
-                            type="text"
-                            placeholder="Paste patient wallet address here..."
-                            value={manualPatientWallet}
-                            onChange={(e) => setManualPatientWallet(e.target.value)}
-                            disabled={resolvingWallet}
-                        />
-                        <button className="btn" onClick={resolvePatientWallet} disabled={resolvingWallet || !manualPatientWallet.trim()}>
-                            {resolvingWallet ? 'Resolving...' : 'Add Patient'}
+                <div className="doctor-wallet-card">
+                    <div className="wallet-card-header">
+                        <div>
+                            <h3>Patient Registration</h3>
+                           <p>Enter copied wallet address at patient dashboard to register.</p> 
+                        </div>
+                        
+                    </div>
+                    <div className="wallet-copy-row">
+                        
+                        <button className="btn wallet-copy-btn" onClick={copyDoctorWallet} disabled={!profile?.wallet || profileLoading}>
+                            {walletCopyStatus || 'Copy Wallet Address'}
                         </button>
                     </div>
                 </div>
-
-                {credentialError ? <div className="credential-error">{credentialError}</div> : null}
 
                 {pendingPatients.length > 0 ? (
                     <div className="pending-patients-section">
@@ -862,6 +865,7 @@ const DoctorDashboard: React.FC = () => {
                     <div className="vaccine-form-modal">
                         <h2>Issue Vaccination Credential</h2>
                         <p>Issuing to wallet: {selectedPatient.wallet}</p>
+                        {credentialError ? <div className="credential-error">{credentialError}</div> : null}
                         <form onSubmit={issueCredentialFromModal} className="vaccine-form">
                             <div className="form-row">
                                 <div className="form-group">

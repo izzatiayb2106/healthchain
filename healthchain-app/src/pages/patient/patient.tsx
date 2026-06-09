@@ -65,6 +65,35 @@ type HybridRecordView = HybridChainRecord & {
 	credential?: {
 		credentialDetails?: Record<string, any> | null;
 	} | null;
+	txHash?: string | null;
+	chainId?: string | null;
+	contractAddress?: string | null;
+	finalizedAt?: string | null;
+};
+
+type BlockchainBlockView = {
+	recordId: string;
+	cid: string;
+	payloadHash: string;
+	txHash: string;
+	chainId: string;
+	contractAddress: string;
+	blockNumber: number | null;
+	blockHash: string | null;
+	parentHash: string | null;
+	timestamp: string | null;
+	gasUsed: string | null;
+				transactionIndex: number | null;
+	status: 'Anchored' | 'Pending' | 'Missing';
+};
+
+type BlockchainSummary = {
+	rpcUrl: string;
+	networkName: string;
+	chainId: string;
+	currentBlockNumber: number | null;
+	latestBlockHash: string | null;
+	anchoredCount: number;
 };
 
 type DecodedVcJwt = {
@@ -103,6 +132,14 @@ async function sha256Hex(input: string) {
 	return `0x${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
+function shortenHex(value: string, head = 10, tail = 8) {
+	const text = String(value || '').trim();
+	if (!text || text.length <= head + tail + 1) {
+		return text || 'N/A';
+	}
+	return `${text.slice(0, head)}…${text.slice(-tail)}`;
+}
+
 const PatientDashboard: React.FC = () => {
 	const [profile, setProfile] = useState<PatientProfile | null>(null);
 	const [profileLoading, setProfileLoading] = useState(true);
@@ -134,7 +171,12 @@ const PatientDashboard: React.FC = () => {
 	const [hybridDecrypted, setHybridDecrypted] = useState<HybridDecryptedView | null>(null);
 	const [hybridQrPayload, setHybridQrPayload] = useState<string | null>(null);
 	const [hybridPayloadCopyStatus, setHybridPayloadCopyStatus] = useState<string | null>(null);
+	const [blockchainBlocks, setBlockchainBlocks] = useState<BlockchainBlockView[]>([]);
+	const [blockchainLoading, setBlockchainLoading] = useState(false);
+	const [blockchainError, setBlockchainError] = useState<string | null>(null);
+	const [blockchainSummary, setBlockchainSummary] = useState<BlockchainSummary | null>(null);
 	const encryptionKeyRegistrationTriedRef = useRef(false);
+	const patientDidRef = useRef('');
 	const qrCodeRef = useRef<any>(null);
 	const hybridQrCodeRef = useRef<any>(null);
 
@@ -162,6 +204,7 @@ const PatientDashboard: React.FC = () => {
 				const profileRes = await apiClient.get('/patient/profile/me');
 				const loadedProfile = profileRes.data?.profile as PatientProfile;
 				setProfile(loadedProfile);
+				patientDidRef.current = String(loadedProfile?.did || '').trim();
 				hydrateProfileForm(loadedProfile);
 				setShowOnboarding(Boolean(profileRes.data?.needsOnboarding));
 			} catch (error: any) {
@@ -183,6 +226,115 @@ const PatientDashboard: React.FC = () => {
 		} finally {
 			setProfileLoading(false);
 			setCredentialsLoading(false);
+		}
+	};
+
+	const loadBlockchainAnchors = async (subjectDid: string) => {
+		try {
+			setBlockchainLoading(true);
+			setBlockchainError(null);
+
+			const targetDid = String(subjectDid || '').trim();
+			if (!targetDid) {
+				setBlockchainBlocks([]);
+				setBlockchainSummary(null);
+				return;
+			}
+
+			const receivedRes = await apiClient.get(`/credential/received/${encodeURIComponent(targetDid)}`);
+			const receivedRecords = Array.isArray(receivedRes.data?.credentials) ? receivedRes.data.credentials : [];
+			if (!receivedRecords.length) {
+				setBlockchainBlocks([]);
+				setBlockchainSummary(null);
+				return;
+			}
+
+			const provider = new ethers.JsonRpcProvider(CHAIN_READ_RPC_URL);
+			const network = await provider.getNetwork();
+			const currentBlockNumber = await provider.getBlockNumber();
+			const latestBlock = currentBlockNumber >= 0 ? await provider.getBlock(currentBlockNumber) : null;
+
+			const blockViews = await Promise.all(receivedRecords.map(async (record: any) => {
+				const txHash = String(record.txHash || '').trim();
+				const contractAddress = String(record.contractAddress || getCredentialRegistryAddress() || '').trim();
+				const chainId = String(record.chainId || network.chainId.toString());
+
+				if (!txHash) {
+					return {
+						recordId: record.recordId,
+						cid: record.cid,
+						payloadHash: record.payloadHash,
+						txHash: '',
+						chainId,
+						contractAddress,
+						blockNumber: null,
+						blockHash: null,
+						parentHash: null,
+						timestamp: null,
+						gasUsed: null,
+						transactionIndex: null,
+						status: 'Missing' as const,
+					};
+				}
+
+				const receipt = await provider.getTransactionReceipt(txHash);
+				if (!receipt) {
+					return {
+						recordId: record.recordId,
+						cid: record.cid,
+						payloadHash: record.payloadHash,
+						txHash,
+						chainId,
+						contractAddress,
+						blockNumber: null,
+						blockHash: null,
+						parentHash: null,
+						timestamp: null,
+						gasUsed: null,
+						transactionIndex: null,
+						status: 'Pending' as const,
+					};
+				}
+
+				const block = await provider.getBlock(receipt.blockNumber);
+				return {
+					recordId: record.recordId,
+					cid: record.cid,
+					payloadHash: record.payloadHash,
+					txHash,
+					chainId,
+					contractAddress,
+					blockNumber: receipt.blockNumber ?? null,
+					blockHash: receipt.blockHash || block?.hash || null,
+					parentHash: block?.parentHash || null,
+					timestamp: block?.timestamp ? new Date(block.timestamp * 1000).toISOString() : null,
+					gasUsed: receipt.gasUsed?.toString() || block?.gasUsed?.toString() || null,
+					transactionIndex: (receipt as any).transactionIndex ?? (receipt as any).index ?? null,
+					status: 'Anchored' as const,
+				};
+			}));
+
+			blockViews.sort((left, right) => {
+				const leftBlock = left.blockNumber ?? -1;
+				const rightBlock = right.blockNumber ?? -1;
+				return rightBlock - leftBlock;
+			});
+
+			setBlockchainBlocks(blockViews);
+			setBlockchainSummary({
+				rpcUrl: CHAIN_READ_RPC_URL,
+				networkName: String(network.name || 'unknown'),
+				chainId: network.chainId.toString(),
+				currentBlockNumber,
+				latestBlockHash: latestBlock?.hash || null,
+				anchoredCount: blockViews.filter((entry) => entry.status === 'Anchored').length,
+			});
+		} catch (error: any) {
+			setBlockchainError(error?.message || 'Failed to load blockchain anchors');
+			setBlockchainBlocks([]);
+			setBlockchainSummary(null);
+		} finally {
+			setBlockchainLoading(false);
 		}
 	};
 
@@ -266,14 +418,20 @@ const PatientDashboard: React.FC = () => {
 					console.log(`Record ${index}:`, tuple);
 					const chainRecord = mapChainRecordTuple(tuple);
 					let credentialDetails: Record<string, any> | null = null;
+					let credentialRecordMeta: Record<string, any> | null = null;
 					try {
 						const credentialRes = await apiClient.get(`/credential/hybrid/cid/${encodeURIComponent(chainRecord.cid)}`);
 						credentialDetails = credentialRes.data?.credentialDetails || null;
+						credentialRecordMeta = credentialRes.data || null;
 					} catch (credentialError: any) {
 						console.warn(`Failed to enrich record ${chainRecord.cid} with credential details:`, credentialError?.message || credentialError);
 					}
 					records.push({
 						...chainRecord,
+						txHash: credentialRecordMeta?.txHash || null,
+						chainId: credentialRecordMeta?.chainId || null,
+						contractAddress: credentialRecordMeta?.contractAddress || null,
+						finalizedAt: credentialRecordMeta?.finalizedAt || null,
 						credential: credentialDetails ? { credentialDetails } : null,
 					});
 				} catch (recordError: any) {
@@ -302,9 +460,21 @@ const PatientDashboard: React.FC = () => {
 		}
 	};
 
+	useEffect(() => {
+		if (!profile?.did) {
+			patientDidRef.current = '';
+			setBlockchainBlocks([]);
+			setBlockchainSummary(null);
+			return;
+		}
+
+		patientDidRef.current = String(profile.did || '').trim();
+
+		void loadBlockchainAnchors(profile.did);
+	}, [profile?.did]);
+
 	const decryptHybridRecord = async (record: HybridChainRecord) => {
 		try {
-			setSelectedHybridRecordId(record.recordId);
 			setHybridError(null);
 			setHybridDecrypted(null);
 
@@ -392,6 +562,7 @@ const PatientDashboard: React.FC = () => {
 				startsWithPrefix: true,
 				length: encryptedCredentialHex.length,
 			});
+			setSelectedHybridRecordId(record.recordId);
 			
 			const vcJwt = await window.ethereum.request({
 				method: 'eth_decrypt',
@@ -492,10 +663,20 @@ const PatientDashboard: React.FC = () => {
 			const handleCredentialFinalized = () => {
 				console.log('[SSE] Received credential-finalized event, reloading hybrid records...');
 				void loadHybridRecords();
+				if (patientDidRef.current) {
+					void loadBlockchainAnchors(patientDidRef.current);
+				}
+			};
+
+			const handleAccountLocked = async () => {
+				console.log('[SSE] Received account-locked event, logging out patient...');
+				await logoutWithAudit();
+				window.location.href = '/login?error=account-locked';
 			};
 
 			eventSource.addEventListener('credential-issued', handleCredentialIssued);
 			eventSource.addEventListener('credential-finalized', handleCredentialFinalized);
+			eventSource.addEventListener('account-locked', handleAccountLocked as EventListener);
 
 			eventSource.addEventListener('error', (error: any) => {
 				console.error('[SSE] Connection error:', error);
@@ -506,6 +687,7 @@ const PatientDashboard: React.FC = () => {
 				console.log('[SSE] Closing connection');
 				eventSource.removeEventListener('credential-issued', handleCredentialIssued);
 				eventSource.removeEventListener('credential-finalized', handleCredentialFinalized);
+				eventSource.removeEventListener('account-locked', handleAccountLocked as EventListener);
 				eventSource.close();
 			};
 		} catch (error) {
@@ -823,7 +1005,7 @@ const PatientDashboard: React.FC = () => {
 						<div><strong>Blood type:</strong> {profile.bloodType || '-'}</div>
 						<div><strong>Phone:</strong> {profile.phone || '-'}</div>
 						<div><strong>Email:</strong> {profile.email || '-'}</div>
-						<div><strong>Emergency:</strong> {profile.emergencyContact || '-'}</div>
+						<div><strong>Emergency Contact:</strong> {profile.emergencyContact || '-'}</div>
 					</div>
 					<button className="btn request" onClick={() => setShowEditProfile((prev) => !prev)}>
 						{showEditProfile ? 'Close Profile Editor' : 'Edit Profile'}
@@ -871,21 +1053,21 @@ const PatientDashboard: React.FC = () => {
 			) : null}
 
 			<section className="patient-card">
-				<h2>Register with a Doctor</h2>
-				<p>Scan your doctor's QR code or enter their wallet address to allow them to issue credentials to you.</p>
+				<h2>Patient Registration</h2>
+				<p>Enter doctor wallet address to register with the doctor.</p>
 				<button className="btn request" onClick={() => setShowDoctorWalletInput((prev) => !prev)}>
-					{showDoctorWalletInput ? 'Cancel' : 'Scan/Enter Doctor Wallet'}
+					{showDoctorWalletInput ? 'Cancel' : 'Enter Doctor Wallet'}
 				</button>
 
 				{showDoctorWalletInput ? (
 					<form className="doctor-wallet-form" onSubmit={registerWithDoctor}>
-						<label htmlFor="doctorWallet">Doctor Wallet Address (from QR code scan)</label>
+						<label htmlFor="doctorWallet">Doctor Wallet Address</label>
 						<input
 							id="doctorWallet"
 							type="text"
 							value={doctorWalletInput}
 							onChange={(event) => setDoctorWalletInput(event.target.value)}
-							placeholder="Paste doctor's wallet address here (or QR scan result)"
+							placeholder="Paste doctor's wallet address here"
 							disabled={registeringWithDoctor}
 						/>
 						{doctorRegistrationError ? <div className="doctor-apply-error">{doctorRegistrationError}</div> : null}
@@ -975,6 +1157,75 @@ const PatientDashboard: React.FC = () => {
 				</div>
 			</section>
 
+			<section className="patient-card blockchain-panel">
+				<h2>Blockchain Anchoring Trail</h2>
+				<p>
+					Live view of finalized anchors. Each row maps a finalized hybrid credential to the block that included its transaction.
+				</p>
+				<div className="blockchain-summary">
+					<div className="blockchain-summary-item">
+						<span className="blockchain-summary-label">RPC Server</span>
+						<span className="blockchain-summary-value">{blockchainSummary?.rpcUrl || CHAIN_READ_RPC_URL}</span>
+					</div>
+					<div className="blockchain-summary-item">
+						<span className="blockchain-summary-label">Chain ID</span>
+						<span className="blockchain-summary-value">{blockchainSummary?.chainId || 'N/A'}</span>
+					</div>
+					<div className="blockchain-summary-item">
+						<span className="blockchain-summary-label">Current Block</span>
+						<span className="blockchain-summary-value">{blockchainSummary?.currentBlockNumber ?? 'N/A'}</span>
+					</div>
+					<div className="blockchain-summary-item">
+						<span className="blockchain-summary-label">Anchored Records</span>
+						<span className="blockchain-summary-value">{blockchainSummary?.anchoredCount ?? 0}</span>
+					</div>
+				</div>
+				{blockchainError ? <div className="doctor-apply-error">{blockchainError}</div> : null}
+				{blockchainLoading ? <p>Loading blockchain blocks...</p> : null}
+				{!blockchainLoading && blockchainBlocks.length === 0 ? (
+					<p></p>
+				) : null}
+				{blockchainBlocks.length > 0 ? (
+					<div className="blockchain-table-wrap">
+						<table className="blockchain-table">
+							<thead>
+								<tr>
+									<th>Status</th>
+									<th>Block</th>
+									<th>Time</th>
+									<th>Tx Hash</th>
+									<th>Record ID</th>
+									<th>CID</th>
+									<th>Gas Used</th>
+								</tr>
+							</thead>
+							<tbody>
+								{blockchainBlocks.map((block) => (
+									<tr key={`${block.recordId}-${block.txHash || block.cid}`}>
+										<td>
+											<span className={`blockchain-status blockchain-status-${block.status.toLowerCase()}`}>
+												{block.status}
+											</span>
+										</td>
+										<td>
+											<div className="blockchain-cell-main">
+												<strong>{block.blockNumber ?? 'Pending'}</strong>
+												<small>{shortenHex(block.blockHash || block.parentHash || block.txHash)}</small>
+											</div>
+										</td>
+										<td>{block.timestamp ? new Date(block.timestamp).toLocaleString() : 'Waiting for confirmation'}</td>
+										<td title={block.txHash || 'Pending'}>{shortenHex(block.txHash)}</td>
+										<td>{shortenHex(block.recordId, 6, 4)}</td>
+										<td title={block.cid}>{shortenHex(block.cid)}</td>
+										<td>{block.gasUsed || 'N/A'}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : null}
+			</section>
+
 				{hybridDecrypted ? (
 					<div
 						className="modal-overlay"
@@ -1061,11 +1312,11 @@ const PatientDashboard: React.FC = () => {
 				}}
 			>
 				<div className="credential-qr-modal" onClick={(event) => event.stopPropagation()}>
-					<h2>Hybrid Verification QR</h2>
+					<h2>Verification QR</h2>
 					<div className="credential-qr-code-wrap" ref={hybridQrCodeRef}>
 						<QRCodeSVG value={hybridQrPayload} size={300} includeMargin level="H" />
 					</div>
-					<p><strong>Copyable Payload (testing):</strong></p>
+					<p><strong>Copyable Payload:</strong></p>
 					<textarea
 						className="hybrid-payload-textarea"
 						value={hybridQrPayload}
@@ -1080,7 +1331,7 @@ const PatientDashboard: React.FC = () => {
 						</button>
 					</div>
 					{hybridPayloadCopyStatus ? <p className="credential-qr-note">{hybridPayloadCopyStatus}</p> : null}
-					<p className="credential-qr-note">This QR includes contract address, record ID, CID, and hash for on-chain integrity validation.</p>
+					<p className="credential-qr-note">QR includes contract address, record ID, CID, and hash for on-chain integrity validation.</p>
 					<button
 						type="button"
 						className="btn request"

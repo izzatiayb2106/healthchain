@@ -202,6 +202,136 @@
 	line-height: 1.55;
 }
 
+.blockchain-panel {
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(242, 234, 224, 0.8));
+}
+
+.blockchain-summary {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+	margin: 14px 0 16px;
+}
+
+.blockchain-summary-item {
+	padding: 12px 14px;
+	border-radius: 16px;
+	background: rgba(255, 255, 255, 0.82);
+	border: 1px solid rgba(155, 142, 199, 0.18);
+	box-shadow: 0 10px 24px rgba(82, 67, 114, 0.06);
+}
+
+.blockchain-summary-label {
+	display: block;
+	margin-bottom: 6px;
+	font-size: 0.75rem;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: #6a6287;
+}
+
+.blockchain-summary-value {
+	display: block;
+	font-size: 0.95rem;
+	font-weight: 700;
+	color: #342d47;
+	word-break: break-word;
+}
+
+.blockchain-table-wrap {
+	overflow-x: auto;
+	border-radius: 18px;
+	border: 1px solid rgba(155, 142, 199, 0.16);
+	background: rgba(255, 255, 255, 0.8);
+	box-shadow: 0 10px 24px rgba(82, 67, 114, 0.06);
+}
+
+.blockchain-table {
+	width: 100%;
+	min-width: 760px;
+	border-collapse: collapse;
+}
+
+.blockchain-table thead {
+	background: linear-gradient(135deg, rgba(47, 42, 61, 0.94), rgba(82, 67, 114, 0.94));
+	color: #fff;
+}
+
+.blockchain-table th,
+.blockchain-table td {
+	padding: 12px 14px;
+	text-align: left;
+	border-bottom: 1px solid rgba(155, 142, 199, 0.14);
+	font-size: 0.88rem;
+	vertical-align: top;
+}
+
+.blockchain-table th {
+	font-size: 0.76rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-weight: 800;
+	border-bottom: 0;
+}
+
+.blockchain-table tbody tr:nth-child(even) {
+	background: rgba(242, 234, 224, 0.32);
+}
+
+.blockchain-table tbody tr:hover {
+	background: rgba(180, 211, 217, 0.18);
+}
+
+.blockchain-cell-main {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.blockchain-cell-main strong {
+	font-size: 1rem;
+	color: #312b40;
+}
+
+.blockchain-cell-main small {
+	font-size: 0.74rem;
+	color: #72698f;
+	word-break: break-word;
+}
+
+.blockchain-status {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 6px 10px;
+	border-radius: 999px;
+	font-size: 0.74rem;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	white-space: nowrap;
+	border: 1px solid transparent;
+}
+
+.blockchain-status-anchored {
+	background: #edf8f4;
+	color: var(--patient-success-text);
+	border-color: rgba(29, 106, 75, 0.16);
+}
+
+.blockchain-status-pending {
+	background: #fff6e5;
+	color: #8a5a10;
+	border-color: rgba(138, 90, 16, 0.18);
+}
+
+.blockchain-status-missing {
+	background: #fff0eb;
+	color: var(--patient-danger-text);
+	border-color: rgba(159, 59, 52, 0.16);
+}
+
 .patient-form,
 .doctor-apply-form {
 	display: flex;
@@ -440,8 +570,8 @@
 }
 
 .credential-qr-modal {
-	width: 100%;
-	max-width: 520px;
+	width: min(100%, calc(100vw - 32px));
+	max-width: min(520px, calc(100vw - 32px));
 	background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 234, 224, 0.94));
 	padding: 22px;
 	border-radius: 24px;
@@ -519,7 +649,7 @@
 }
 
 .hybrid-payload-textarea {
-	width: 95%;
+	width: 100%;
 	min-height: 88px;
 	padding: 12px;
 	border-radius: 14px;
@@ -531,6 +661,8 @@
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 	resize: vertical;
 	margin-bottom: 10px;
+	box-sizing: border-box;
+	overflow-x: auto;
 }
 
 .patient-stats {
@@ -598,6 +730,10 @@
 		flex-direction: column;
 		align-items: stretch;
 	}
+
+	.blockchain-summary {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
 }
 
 @media (max-width: 760px) {
@@ -637,5 +773,76 @@
 	.patient-card .btn.request,
 	.doctor-apply-form .btn.request {
 		width: 100%;
+	}
+
+	.blockchain-summary {
+		grid-template-columns: 1fr;
+	}
+
+	.blockchain-table th,
+	.blockchain-table td {
+		padding: 10px 12px;
+	}
+}
+
+@media (max-width: 480px) {
+	.patient-dashboard {
+		padding: 12px;
+	}
+
+	.patient-header {
+		gap: 10px;
+	}
+
+	.patient-header h1 {
+		font-size: 1.45rem;
+	}
+
+	.patient-card,
+	.doctor-apply-card,
+	.credential-qr-modal {
+		padding: 14px;
+		border-radius: 16px;
+	}
+
+	.patient-form,
+	.doctor-apply-form,
+	.doctor-wallet-form,
+	.scanner-actions {
+		gap: 8px;
+	}
+
+	.patient-form input,
+	.patient-form select,
+	.doctor-apply-form input,
+	.doctor-apply-form textarea,
+	.doctor-wallet-form input {
+		font-size: 16px;
+	}
+
+	.patient-form label,
+	.doctor-apply-form label,
+	.doctor-wallet-form label,
+	.credential-summary-label {
+		font-size: 0.82rem;
+	}
+
+	.credential-card {
+		padding: 12px;
+	}
+
+	.credential-card h3 {
+		font-size: 0.96rem;
+	}
+
+	.credential-qr-note,
+	.credential-qr-hint,
+	.hybrid-payload-textarea {
+		font-size: 0.8rem;
+	}
+
+	.btn {
+		padding: 10px 12px;
+		font-size: 0.9rem;
 	}
 }

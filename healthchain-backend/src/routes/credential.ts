@@ -628,9 +628,15 @@ export default function credentialRoutes(agent: any) {
       );
 
       const foundRecord = await getHybridCredentialByCid(payload.cid)
+      const dbPayloadHash = String(foundRecord?.payloadHash || '').trim()
       const expirationDate = String(foundRecord?.expirationDate || '').trim()
+      const payloadHashMatchesDb = Boolean(
+        dbPayloadHash && dbPayloadHash.toLowerCase() === payload.payloadHash.toLowerCase()
+      )
+      const isTampered = Boolean(valid && !payloadHashMatchesDb)
       const isExpired = Boolean(
         valid &&
+        !isTampered &&
         expirationDate &&
         !/^lifetime$/i.test(expirationDate) &&
         Number.isFinite(Date.parse(expirationDate)) &&
@@ -639,6 +645,8 @@ export default function credentialRoutes(agent: any) {
 
       const verificationStatusText = !valid
         ? 'Verification Failed'
+        : isTampered
+          ? 'Credential Tampered'
         : isExpired
           ? 'Credential Expired'
           : 'Verified Valid'
@@ -648,13 +656,16 @@ export default function credentialRoutes(agent: any) {
         role: 'verifier',
         wallet: verifierIdentity.wallet,
         did: verifierIdentity.did,
-        status: valid && !isExpired ? 'success' : 'failed',
+        status: valid && !isExpired && !isTampered ? 'success' : 'failed',
         details: verificationStatusText,
         metadata: {
           contractAddress: payload.contractAddress,
           recordId: payload.recordId,
           cid: payload.cid,
           payloadHash: payload.payloadHash,
+          dbPayloadHash: dbPayloadHash || null,
+          payloadHashMatchesDb,
+          isTampered,
           expirationDate: expirationDate || null,
           isExpired,
         },
@@ -666,6 +677,7 @@ export default function credentialRoutes(agent: any) {
         valid,
         expired: isExpired,
         statusText: verificationStatusText,
+        tampered: isTampered,
         verifiedBy: verifierIdentity.did,
         contractAddress: payload.contractAddress,
         recordId: payload.recordId,

@@ -27,44 +27,38 @@ const PDPAConsentModal: React.FC<PDPAConsentModalProps> = ({
 
         <div className="pdpa-modal-body">
           <p>
-            This system collects and processes your personal data in accordance with the Personal Data Protection Act
+            - This system collects and processes your personal data in accordance with the Personal Data Protection Act
             2010 (PDPA) Malaysia. By continuing, you consent to the collection, use, storage, and processing of your
             personal data for the purposes stated in this notice.
           </p>
 
           <p>
-            The personal data that may be collected includes your wallet address, Decentralized Identifier (DID), role
+            - The personal data that may be collected includes your wallet address, Decentralized Identifier (DID), role
             information, profile details, vaccination or medical credential information, encrypted credential files,
             IPFS content identifier (CID), and blockchain transaction or hash records.
           </p>
 
           <p>
-            Your personal data is collected for account registration, DID generation, role verification, credential
+            - Your personal data is collected for account registration, DID generation, role verification, credential
             issuance, encrypted credential storage, credential verification, audit logging, and system security
             purposes.
           </p>
 
           <p>
-            Medical credential data will be encrypted before storage. The system may store encrypted credential files
+            -Medical credential data will be encrypted before storage. The system may store encrypted credential files
             using IPFS, while verification references such as hashes, CIDs, wallet addresses, and transaction records
             may be stored on the blockchain or system database. Access to data is restricted based on user roles, such
             as patient, doctor, verifier, and administrator.
           </p>
 
           <p>
-            Your personal data will not be disclosed to unauthorized third parties. It may only be accessed by
+            - Your personal data will not be disclosed to unauthorized third parties. It may only be accessed by
             authorized users according to their role and permission in the system.
           </p>
 
           <p>
-            Your personal data will only be retained for as long as necessary for system operation, credential
+            - Your personal data will only be retained for as long as necessary for system operation, credential
             verification, audit purposes, or legal and academic project requirements.
-          </p>
-
-          <p>
-            You have the right to request access to your personal data, request correction of inaccurate data, and
-            withdraw your consent where applicable. However, withdrawal of consent may limit your ability to use certain
-            functions of the system.
           </p>
 
           <label className="pdpa-modal-checkbox">

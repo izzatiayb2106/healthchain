@@ -9,6 +9,7 @@ import './verifier.css';
 type HybridVerifyResult = {
 	valid: boolean;
 	expired: boolean;
+	tampered?: boolean;
 	statusText: string;
 	recordId: string;
 	cid: string;
@@ -42,6 +43,32 @@ const VerifierDashboard: React.FC = () => {
 	const [isScanning, setIsScanning] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const [verifierProfile, setVerifierProfile] = useState<VerifierProfile | null>(null);
+
+	useEffect(() => {
+		const token = String(localStorage.getItem('hc_jwt_token') || '').trim();
+		if (!token) {
+			return;
+		}
+
+		try {
+			const eventSource = new EventSource(`http://localhost:3001/auth/events?token=${encodeURIComponent(token)}`);
+
+			const handleAccountLocked = async () => {
+				console.log('[SSE] Received account-locked event, logging out verifier...');
+				await logoutWithAudit();
+				window.location.href = '/login?error=account-locked';
+			};
+
+			eventSource.addEventListener('account-locked', handleAccountLocked as EventListener);
+
+			return () => {
+				eventSource.removeEventListener('account-locked', handleAccountLocked as EventListener);
+				eventSource.close();
+			};
+		} catch (error) {
+			console.error('[SSE] Failed to set up lock listener:', error);
+		}
+	}, []);
 
 	const parseHybridPayload = (rawValue: string): HybridQrPayload => {
 		let parsed: any;
@@ -138,11 +165,13 @@ const VerifierDashboard: React.FC = () => {
 
 			const valid = Boolean(response.data?.valid);
 			const expired = Boolean(response.data?.expired);
+			const tampered = Boolean(response.data?.tampered);
 			const statusText = String(response.data?.statusText || (valid ? 'Verified Valid' : 'Verification Failed'));
 
 			setHybridResult({
 				valid,
 				expired,
+				tampered,
 				statusText,
 				recordId: String(response.data?.recordId || parsed.recordId),
 				cid: String(response.data?.cid || parsed.cid),
@@ -161,6 +190,45 @@ const VerifierDashboard: React.FC = () => {
 		} finally {
 			setVerifying(false);
 		}
+	};
+
+	const getVerificationStatusClass = (result: HybridVerifyResult) => {
+		if (result.tampered) {
+			return 'verification-status verification-status-tampered';
+		}
+		if (!result.valid) {
+			return 'verification-status verification-status-failed';
+		}
+		if (result.expired) {
+			return 'verification-status verification-status-expired';
+		}
+		return 'verification-status verification-status-valid';
+	};
+
+	const getVerificationBadgeClass = (result: HybridVerifyResult) => {
+		if (result.tampered) {
+			return 'badge badge-tampered';
+		}
+		if (!result.valid) {
+			return 'badge badge-failed';
+		}
+		if (result.expired) {
+			return 'badge badge-expired';
+		}
+		return 'badge badge-valid';
+	};
+
+	const getVerificationBadgeLabel = (result: HybridVerifyResult) => {
+		if (result.tampered) {
+			return 'Tampered';
+		}
+		if (!result.valid) {
+			return 'Failed';
+		}
+		if (result.expired) {
+			return 'Expired';
+		}
+		return 'Verified';
 	};
 
 	const verifyQr = async (event: React.FormEvent) => {
@@ -202,12 +270,17 @@ const VerifierDashboard: React.FC = () => {
 				return;
 			}
 
+			const readerElement = document.getElementById(readerElementId);
+			const readerWidth = Math.max(320, readerElement?.clientWidth || 0);
+			const qrboxSize = Math.max(220, Math.min(360, Math.floor(readerWidth * 0.72)));
+			readerElement?.style.setProperty('--qr-frame-size', `${qrboxSize}px`);
+
 			const scanner = new Html5Qrcode(readerElementId);
 			scannerRef.current = scanner;
 
 			await scanner.start(
 				{ deviceId: { exact: cameras[0].id } },
-				{ fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+				{ fps: 15, qrbox: { width: qrboxSize, height: qrboxSize }, aspectRatio: 1.0 },
 				(decodedText) => {
 					setTokenOrPayload(decodedText);
 					void verifyQrValue(decodedText);
@@ -355,7 +428,7 @@ const VerifierDashboard: React.FC = () => {
 
 			<section className="verifier-panel">
 				<h2>Verify Credential QR</h2>
-				<p>Scan or paste hybrid QR payload. Verification requires verifier role and MetaMask signature approval.</p>
+				<p>Scan or paste QR payload.</p>
 				<div className="scanner-actions">
 					<button className="btn approve" type="button" onClick={() => void startScanner()} disabled={isScanning || verifying}>
 						{isScanning ? 'Scanner Running...' : 'Scan'}
@@ -381,7 +454,7 @@ const VerifierDashboard: React.FC = () => {
 					<textarea
 						value={tokenOrPayload}
 						onChange={(event) => setTokenOrPayload(event.target.value)}
-						placeholder='Paste payload e.g. {"type":"healthchain-hybrid-record","contractAddress":"0x...","recordId":"1","cid":"...","payloadHash":"0x..."}'
+						placeholder='Paste QR payload.'
 						disabled={verifying}
 					/>
 					<button className="btn approve" type="submit" disabled={verifying}>
@@ -393,18 +466,10 @@ const VerifierDashboard: React.FC = () => {
 
 			{hybridResult ? (
 				<section className="claim-list">
-					<article className={`claim-card ${hybridResult.valid && !hybridResult.expired ? 'approved' : ''}`}>
+					<article className={`claim-card ${hybridResult.valid && !hybridResult.expired && !hybridResult.tampered ? 'approved' : ''}`}>
 						<div className="claim-main claim-main-column">
 							<h3 className="patient-name">On-Chain Validation</h3>
-							<div
-								className={
-									hybridResult.valid
-										? (hybridResult.expired
-											? 'verification-status verification-status-failed'
-											: 'verification-status verification-status-valid')
-										: 'verification-status verification-status-failed'
-								}
-							>
+							<div className={getVerificationStatusClass(hybridResult)}>
 								<strong>Status:</strong> {hybridResult.statusText}
 							</div>
 							<div><strong>Record ID:</strong> {hybridResult.recordId}</div>
@@ -416,8 +481,8 @@ const VerifierDashboard: React.FC = () => {
 							<div><strong>Contract:</strong> {hybridResult.contractAddress}</div>
 						</div>
 						<div className="claim-actions">
-							<span className={`badge ${hybridResult.valid && !hybridResult.expired ? 'badge-valid' : 'badge-failed'}`}>
-								{hybridResult.valid ? (hybridResult.expired ? 'Expired' : 'Verified') : 'Failed'}
+							<span className={getVerificationBadgeClass(hybridResult)}>
+								{getVerificationBadgeLabel(hybridResult)}
 							</span>
 						</div>
 					</article>

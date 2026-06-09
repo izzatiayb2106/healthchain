@@ -1,100 +1,58 @@
-# React + TypeScript + Vite
+# 🏥 HealthChain – Blockchain-Based Digital Health Passport System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## 📌 System Overview
 
-Currently, two official plugins are available:
+HealthChain is a blockchain-based Digital Health Passport system designed to securely manage, store, and share patient medical records across healthcare providers. The system aims to improve data security, patient ownership, and interoperability between different medical institutions by leveraging blockchain technology and decentralized storage.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ❗ Problem Statement
 
-## React Compiler
+Traditional healthcare systems rely on centralized databases, which introduce risks such as data breaches, single points of failure, and limited patient control over personal medical information. In addition, sharing medical records across different healthcare providers is often inefficient and fragmented due to lack of interoperability.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 💡 Proposed Solution
 
-## Expanding the ESLint configuration
+HealthChain addresses these issues by utilizing blockchain technology to store verified medical record hashes and transaction logs in an immutable ledger. Actual medical data is stored securely off-chain (e.g., IPFS or secure database), while blockchain ensures data integrity, traceability, and tamper resistance.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The system allows:
 
-```js
-export default defineConfig([
-  globalIgnores(["dist"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-      // Other configs...
+* 👤 Patients to own and control access to their medical records
+* 🏥 Healthcare providers to securely upload and verify medical data
+* 🔐 Authorized parties to access records through permission-based access control
+* 📊 Transparent audit trails for all data interactions
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## ⭐ Key Features
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
-```
+* 🗂️ **Decentralized Record Storage:** Ensures data integrity and reduces risk of centralized failure
+* 🔑 **Patient-Centric Access Control:** Patients can grant or revoke access to their health records
+* ⛓️ **Blockchain Audit Trail:** Every action is recorded for transparency and accountability
+* 🔄 **Secure Data Sharing:** Enables safe and efficient sharing of medical records between institutions
+* 📱 **QR-Based Verification (if applicable):** Allows quick validation of health credentials
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🏗️ System Architecture
 
-```js
-// eslint.config.js
-import reactX from "eslint-plugin-react-x";
-import reactDom from "eslint-plugin-react-dom";
+The system consists of three main layers:
 
-export default defineConfig([
-  globalIgnores(["dist"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs["recommended-typescript"],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
-```
+1. 🖥️ **Frontend Application:** User interface for patients, doctors, and administrators
+2. ⚙️ **Backend Service:** Handles business logic, authentication, and API requests
+3. ⛓️ **Blockchain Network:** Stores transaction records, access logs, and data hashes for verification
 
-## Hybrid Credential Flow (Blockchain + Encrypted Off-Chain Storage)
+## 🧰 Technologies Used
 
-This project now supports a hybrid credential flow:
+* ⛓️ Blockchain (Ethereum / testnet or local blockchain)
+* 📜 Smart Contracts (Solidity)
+* ⚛️ Frontend: React / Web Interface
+* 🟢 Backend: Node.js / Express (or equivalent)
+* 💾 Storage: IPFS / Cloud Database
+* 🔐 Authentication: MetaMask / Wallet-based login
 
-- Doctor submits vaccination data.
-- Backend issues VC, encrypts it with patient encryption public key, computes SHA-256 hash.
-- Encrypted payload is stored in local fallback storage mode (CID-like identifier) until IPFS node is configured.
-- Doctor signs on-chain issuance transaction to `CredentialRegistry` with `cid` and `payloadHash`.
-- Patient can load on-chain records, fetch encrypted payload by CID, and decrypt locally with MetaMask (`eth_decrypt`).
-- Verifier can scan hybrid QR and validate record integrity on-chain.
+## 🔄 System Workflow
 
-### Deploy contract
+1. 👤 Patient registers and creates a digital health identity
+2. 🏥 Healthcare provider uploads medical record data
+3. 💾 Data is stored off-chain while its hash is recorded on the blockchain
+4. 🔑 Patient grants access permission to authorized providers
+5. 🧾 Providers retrieve and verify records using blockchain validation
+6. 📊 All interactions are logged immutably for audit purposes
 
-From `healthchain-app`:
+## 🎯 Conclusion
 
-```bash
-npx hardhat run blockchain/scripts/deploy.ts --network hardhat
-```
-
-Set frontend env:
-
-```bash
-VITE_CREDENTIAL_REGISTRY_ADDRESS=<deployed_contract_address>
-```
-
-Restart frontend after setting the env variable.
+HealthChain provides a secure, transparent, and decentralized approach to managing healthcare data. By integrating blockchain technology, the system enhances data integrity, improves patient control, and enables efficient interoperability across healthcare systems.

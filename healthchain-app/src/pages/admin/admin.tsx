@@ -74,6 +74,40 @@ const AdminDashboard: React.FC = () => {
     return (localStorage.getItem("hc_role") || "").toLowerCase() === "admin";
   }, []);
 
+  const identityNameByWallet = useMemo(() => {
+    return rows.reduce<Record<string, string>>((acc, row) => {
+      acc[row.wallet.toLowerCase()] = row.displayName || (row.role === "admin" ? "Administrator" : row.did);
+      return acc;
+    }, {});
+  }, [rows]);
+
+  const resolveAuditLogName = (entry: AuditLogEntry) => {
+    if (entry.role === "system") return "System";
+    const resolved = identityNameByWallet[entry.wallet.toLowerCase()];
+    if (resolved) return resolved;
+    if (entry.role === "admin") return "Administrator";
+    return "Unknown user";
+  };
+
+  const loadAuditLogs = async () => {
+    try {
+      setAuditLoading(true);
+      const params = new URLSearchParams();
+      params.set("limit", "300");
+      if (auditRoleFilter) params.set("role", auditRoleFilter);
+      if (auditActionFilter) params.set("action", auditActionFilter);
+
+      const response = await apiClient.get(`/did/audit/logs?${params.toString()}`);
+      setAuditLogs(Array.isArray(response.data?.logs) ? response.data.logs : []);
+    } catch (err: any) {
+      console.error(err);
+      const message = err?.response?.data?.error || "Failed to load audit logs";
+      setError(message);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
   const loadMappings = async () => {
     try {
       setIsLoading(true);
@@ -98,25 +132,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const loadAuditLogs = async () => {
-    try {
-      setAuditLoading(true);
-      const params = new URLSearchParams();
-      params.set("limit", "300");
-      if (auditRoleFilter) params.set("role", auditRoleFilter);
-      if (auditActionFilter) params.set("action", auditActionFilter);
-
-      const response = await apiClient.get(`/did/audit/logs?${params.toString()}`);
-      setAuditLogs(Array.isArray(response.data?.logs) ? response.data.logs : []);
-    } catch (err: any) {
-      console.error(err);
-      const message = err?.response?.data?.error || "Failed to load audit logs";
-      setError(message);
-    } finally {
-      setAuditLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (!canAccess) {
       navigate("/login");
@@ -132,9 +147,7 @@ const AdminDashboard: React.FC = () => {
     try {
       setUpdatingWallet(wallet);
       setError(null);
-      const res = await apiClient.put(`/did/mapping/${encodeURIComponent(wallet)}/role`, {
-        role,
-      });
+      const res = await apiClient.put(`/did/mapping/${encodeURIComponent(wallet)}/role`, { role });
 
       setRows((prev) =>
         prev.map((item) => (item.wallet === wallet ? { ...item, role: res.data.role, updatedAt: res.data.updatedAt } : item))
@@ -165,8 +178,8 @@ const AdminDashboard: React.FC = () => {
     try {
       setUpdatingWallet(selectedWalletForLock);
       setError(null);
-      await apiClient.put(`/did/mapping/${encodeURIComponent(selectedWalletForLock)}/lock`, { 
-        reason: lockReasonInput 
+      await apiClient.put(`/did/mapping/${encodeURIComponent(selectedWalletForLock)}/lock`, {
+        reason: lockReasonInput,
       });
       await loadMappings();
       setLockReasonModalOpen(false);
@@ -231,16 +244,14 @@ const AdminDashboard: React.FC = () => {
             <button
               className={`sidebar-link ${activeSection === "identity" ? "active" : ""}`}
               onClick={() => setActiveSection("identity")}
-              title="Identity Access"
               aria-label="Identity Access"
             >
               <span className="sidebar-link-icon">IA</span>
-              <span className="sidebar-link-label">Identity Access</span>
+              <span className="sidebar-link-label">User Access</span>
             </button>
             <button
               className={`sidebar-link ${activeSection === "audit" ? "active" : ""}`}
               onClick={() => setActiveSection("audit")}
-              title="Audit Log"
               aria-label="Audit Log"
             >
               <span className="sidebar-link-icon">AL</span>
@@ -250,232 +261,226 @@ const AdminDashboard: React.FC = () => {
         </aside>
 
         <main className="admin-main">
-      <div className="admin-wrap">
-        <header className="admin-header">
-          <div className="admin-title">
-            <h1>Admin Dashboard</h1>
-            <p>Manage identity access, lock state, and full role audit visibility.</p>
-          </div>
-          <div className="admin-actions">
-            <button className="btn refresh" onClick={() => void refreshCurrentSection()} disabled={isLoading || auditLoading || !!updatingWallet}>
-              {(isLoading || auditLoading) ? "Refreshing..." : "Refresh"}
-            </button>
-            <button className="btn logout" onClick={logout}>
-              Logout
-            </button>
-          </div>
-        </header>
+          <div className="admin-wrap">
+            <header className="admin-header">
+              <div className="admin-title">
+                <h1>Admin Dashboard</h1>
+                <p>Manage user access, lock state, and audit logs.</p>
+              </div>
+              <div className="admin-actions">
+                <button className="btn refresh" onClick={() => void refreshCurrentSection()} disabled={isLoading || auditLoading || !!updatingWallet}>
+                  {isLoading || auditLoading ? "Refreshing..." : "Refresh"}
+                </button>
+                <button className="btn logout" onClick={logout}>
+                  Logout
+                </button>
+              </div>
+            </header>
 
-        {error ? <div className="admin-error">{error}</div> : null}
+            {error ? <div className="admin-error">{error}</div> : null}
 
-        {activeSection === "identity" ? (
-        <div className="admin-table-wrap">
-          {rows.length === 0 && !isLoading ? (
-            <div className="empty">No identity mappings found.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Wallet</th>
-                  <th>Name</th>
-                  <th>Current Role</th>
-                  <th>Lock State</th>
-                  <th>Created</th>
-                  <th>Updated</th>
-                  <th>Role Management</th>
-                  <th>Access Control</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.wallet}>
-                    <td className="wallet" title={row.wallet}>{row.wallet}</td>
-                    <td className="name" title={row.displayName || row.did}>
-                      {row.displayName ? row.displayName : (row.role === 'admin' ? 'Administrator' : row.did)}
-                    </td>
-                    <td>
-                      <span className={`badge ${row.role}`}>{row.role}</span>
-                    </td>
-                    <td>
-                      <span className={`badge ${row.locked ? "locked" : "unlocked"}`}>
-                        {row.locked ? "locked" : "active"}
-                      </span>
-                      {row.locked && row.lockReason ? (
-                        <div className="lock-reason" title={row.lockReason}>{row.lockReason}</div>
-                      ) : null}
-                    </td>
-                    <td>{new Date(row.createdAt).toLocaleString()}</td>
-                    <td>{new Date(row.updatedAt).toLocaleString()}</td>
-                    <td>
-                      <div className="role-form">
-                        <select
-                          value={selectedRoleByWallet[row.wallet] || row.role}
-                          onChange={(e) =>
-                            setSelectedRoleByWallet((prev) => ({
-                              ...prev,
-                              [row.wallet]: e.target.value as UserRole,
-                            }))
-                          }
-                          disabled={updatingWallet === row.wallet}
-                        >
-                          {roleOptions.map((role) => (
-                            <option key={role} value={role}>
-                              {role}
-                            </option>
-                          ))}
-                        </select>
-                        <button onClick={() => updateRole(row.wallet)} disabled={updatingWallet === row.wallet}>
-                          {updatingWallet === row.wallet ? "Saving..." : "Save"}
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="role-form">
-                        {row.locked ? (
-                          <button
-                            className="unlock-btn"
-                            onClick={() => unlockUser(row.wallet)}
-                            disabled={updatingWallet === row.wallet || row.role === "admin"}
-                          >
-                            {updatingWallet === row.wallet ? "Working..." : "Unlock"}
-                          </button>
-                        ) : (
-                          <button
-                            className="lock-btn"
-                            onClick={() => lockUser(row.wallet)}
-                            disabled={updatingWallet === row.wallet || row.role === "admin"}
-                          >
-                            {updatingWallet === row.wallet ? "Working..." : "Lock"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        ) : null}
+            {activeSection === "identity" ? (
+              <div className="admin-table-wrap">
+                {rows.length === 0 && !isLoading ? (
+                  <div className="empty">No identity mappings found.</div>
+                ) : (
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Wallet</th>
+                        <th>Name</th>
+                        <th>Current Role</th>
+                        <th>Lock State</th>
+                        <th>Created</th>
+                        <th>Updated</th>
+                        <th>Role Management</th>
+                        <th>Access Control</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row) => (
+                        <tr key={row.wallet}>
+                          <td className="wallet" title={row.wallet}>{row.wallet}</td>
+                          <td className="name" title={row.displayName || row.did}>
+                            {row.displayName ? row.displayName : row.role === "admin" ? "Administrator" : row.did}
+                          </td>
+                          <td>
+                            <span className={`badge ${row.role}`}>{row.role}</span>
+                          </td>
+                          <td>
+                            <span className={`badge ${row.locked ? "locked" : "unlocked"}`}>
+                              {row.locked ? "locked" : "active"}
+                            </span>
+                            {row.locked && row.lockReason ? <div className="lock-reason" title={row.lockReason}>{row.lockReason}</div> : null}
+                          </td>
+                          <td>{new Date(row.createdAt).toLocaleString()}</td>
+                          <td>{new Date(row.updatedAt).toLocaleString()}</td>
+                          <td>
+                            <div className="role-form">
+                              <select
+                                value={selectedRoleByWallet[row.wallet] || row.role}
+                                onChange={(e) =>
+                                  setSelectedRoleByWallet((prev) => ({
+                                    ...prev,
+                                    [row.wallet]: e.target.value as UserRole,
+                                  }))
+                                }
+                                disabled={updatingWallet === row.wallet}
+                              >
+                                {roleOptions.map((role) => (
+                                  <option key={role} value={role}>{role}</option>
+                                ))}
+                              </select>
+                              <button onClick={() => updateRole(row.wallet)} disabled={updatingWallet === row.wallet}>
+                                {updatingWallet === row.wallet ? "Saving..." : "Save"}
+                              </button>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="role-form">
+                              {row.locked ? (
+                                <button
+                                  className="unlock-btn"
+                                  onClick={() => unlockUser(row.wallet)}
+                                  disabled={updatingWallet === row.wallet || row.role === "admin"}
+                                >
+                                  {updatingWallet === row.wallet ? "Working..." : "Unlock"}
+                                </button>
+                              ) : (
+                                <button
+                                  className="lock-btn"
+                                  onClick={() => lockUser(row.wallet)}
+                                  disabled={updatingWallet === row.wallet || row.role === "admin"}
+                                >
+                                  {updatingWallet === row.wallet ? "Working..." : "Lock"}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ) : null}
 
-        {activeSection === "audit" ? (
-        <h2 className="section-title">Audit Log</h2>
-        ) : null}
-        {activeSection === "audit" ? (
-        <div className="audit-controls">
-          <label>
-            Role
-            <select value={auditRoleFilter} onChange={(e) => setAuditRoleFilter(e.target.value)}>
-              <option value="">All</option>
-              {roleOptions.map((role) => (
-                <option key={role} value={role}>{role}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Action
-            <select value={auditActionFilter} onChange={(e) => setAuditActionFilter(e.target.value)}>
-              {auditActionOptions.map((action) => (
-                <option key={action || "all"} value={action}>
-                  {action || "All"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button className="btn refresh" onClick={() => void loadAuditLogs()} disabled={auditLoading || !!updatingWallet}>
-            {auditLoading ? "Loading..." : "Load Logs"}
-          </button>
-        </div>
-        ) : null}
-
-        {activeSection === "audit" ? (
-        <div className="admin-table-wrap">
-          {auditLogs.length === 0 && !auditLoading ? (
-            <div className="empty">No audit logs found for selected filters.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Timestamp</th>
-                  <th>Action</th>
-                  <th>Role</th>
-                  <th>Wallet</th>
-                  <th>Status</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditLogs.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{new Date(entry.timestamp).toLocaleString()}</td>
-                    <td><span className="badge neutral">{entry.action}</span></td>
-                    <td><span className={`badge ${entry.role}`}>{entry.role}</span></td>
-                    <td className="wallet" title={entry.wallet}>{entry.wallet}</td>
-                    <td>
-                      <span className={`badge ${entry.status === "success" ? "approved" : "rejected"}`}>
-                        {entry.status}
-                      </span>
-                    </td>
-                    <td>{entry.details || "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        ) : null}
-
-        {lockReasonModalOpen && (
-          <div className="modal-overlay" role="dialog" aria-modal="true">
-            <div className="vaccine-form-modal">
-              <h2>Lock User Account</h2>
-              <p style={{ marginTop: 12, color: 'var(--doctor-muted)' }}>
-                <strong>Wallet:</strong><br />
-                <span style={{ wordBreak: 'break-all', fontSize: '0.9em' }}>{selectedWalletForLock}</span>
-              </p>
-              <div style={{ marginTop: 16 }}>
-                <label htmlFor="lock-reason-input">
-                  <strong>Lock reason (optional):</strong>
+            {activeSection === "audit" ? <h2 className="section-title">Audit Log</h2> : null}
+            {activeSection === "audit" ? (
+              <div className="audit-controls">
+                <label>
+                  Role
+                  <select value={auditRoleFilter} onChange={(e) => setAuditRoleFilter(e.target.value)}>
+                    <option value="">All</option>
+                    {roleOptions.map((role) => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
                 </label>
-                <textarea
-                  id="lock-reason-input"
-                  value={lockReasonInput}
-                  onChange={(e) => setLockReasonInput(e.target.value)}
-                  placeholder="Enter reason for locking this account..."
-                  style={{
-                    width: '100%',
-                    minHeight: '80px',
-                    padding: '8px',
-                    marginTop: '8px',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                    fontFamily: 'inherit',
-                    fontSize: '0.95em',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 18 }}>
-                <button 
-                  className="btn btn-secondary" 
-                  onClick={cancelLockUser}
-                  disabled={updatingWallet === selectedWalletForLock}
-                >
-                  Cancel
-                </button>
-                <button 
-                  className="btn btn-danger" 
-                  onClick={() => void confirmLockUser()}
-                  disabled={updatingWallet === selectedWalletForLock}
-                >
-                  {updatingWallet === selectedWalletForLock ? "Locking..." : "Lock Account"}
+                <label>
+                  Action
+                  <select value={auditActionFilter} onChange={(e) => setAuditActionFilter(e.target.value)}>
+                    {auditActionOptions.map((action) => (
+                      <option key={action || "all"} value={action}>
+                        {action || "All"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="btn refresh" onClick={() => void loadAuditLogs()} disabled={auditLoading || !!updatingWallet}>
+                  {auditLoading ? "Loading..." : "Load Logs"}
                 </button>
               </div>
-            </div>
+            ) : null}
+
+            {activeSection === "audit" ? (
+              <div className="admin-table-wrap">
+                {auditLogs.length === 0 && !auditLoading ? (
+                  <div className="empty">No audit logs found for selected filters.</div>
+                ) : (
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Action</th>
+                        <th>Role</th>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditLogs.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>{new Date(entry.timestamp).toLocaleString()}</td>
+                          <td><span className="badge neutral">{entry.action}</span></td>
+                          <td><span className={`badge ${entry.role}`}>{entry.role}</span></td>
+                          <td className="name" title={entry.wallet}>{resolveAuditLogName(entry)}</td>
+                          <td>
+                            <span className={`badge ${entry.status === "success" ? "approved" : "rejected"}`}>
+                              {entry.status}
+                            </span>
+                          </td>
+                          <td>{entry.details || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ) : null}
+
+            {lockReasonModalOpen && (
+              <div className="modal-overlay" role="dialog" aria-modal="true">
+                <div className="vaccine-form-modal">
+                  <h2>Lock User Account</h2>
+                  <p style={{ marginTop: 12, color: 'var(--doctor-muted)' }}>
+                    <strong>Wallet:</strong><br />
+                    <span style={{ wordBreak: 'break-all', fontSize: '0.9em' }}>{selectedWalletForLock}</span>
+                  </p>
+                  <div style={{ marginTop: 16 }}>
+                    <label htmlFor="lock-reason-input">
+                      <strong>Lock reason (optional):</strong>
+                    </label>
+                    <textarea
+                      id="lock-reason-input"
+                      value={lockReasonInput}
+                      onChange={(e) => setLockReasonInput(e.target.value)}
+                      placeholder="Enter reason for locking this account..."
+                      style={{
+                        width: '100%',
+                        minHeight: '80px',
+                        padding: '8px',
+                        marginTop: '8px',
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                        fontFamily: 'inherit',
+                        fontSize: '0.95em',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 18 }}>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={cancelLockUser}
+                      disabled={updatingWallet === selectedWalletForLock}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => void confirmLockUser()}
+                      disabled={updatingWallet === selectedWalletForLock}
+                    >
+                      {updatingWallet === selectedWalletForLock ? "Locking..." : "Lock Account"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      </main>
+        </main>
       </div>
     </div>
   );

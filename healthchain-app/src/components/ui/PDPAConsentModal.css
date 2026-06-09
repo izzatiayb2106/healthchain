@@ -5,10 +5,12 @@
   background: rgba(19, 16, 27, 0.62);
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: clamp(12px, 3vw, 20px);
+  overflow-y: auto;
 }
 
 .pdpa-modal-card {
+  box-sizing: border-box;
   width: min(100%, 760px);
   max-height: min(90vh, 860px);
   display: grid;
@@ -75,10 +77,27 @@
 }
 
 @media (max-width: 640px) {
+  .pdpa-modal-overlay {
+    place-items: start center;
+    padding: 8px;
+    overflow-x: hidden;
+  }
+
   .pdpa-modal-card {
-    max-height: 92vh;
-    padding: 16px;
-    border-radius: 14px;
+    width: min(92vw, 560px);
+    max-height: calc(100dvh - 16px);
+    padding: 14px;
+    border-radius: 12px;
+    gap: 12px;
+  }
+
+  .pdpa-modal-body {
+    padding: 12px;
+  }
+
+  .pdpa-modal-body p {
+    margin-bottom: 9px;
+    line-height: 1.5;
   }
 
   .pdpa-modal-actions {
@@ -87,5 +106,26 @@
 
   .pdpa-modal-actions .btn {
     width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .pdpa-modal-card {
+    width: min(90vw, 420px);
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .pdpa-modal-card h2 {
+    font-size: 1rem;
+  }
+
+  .pdpa-modal-body {
+    padding: 10px;
+  }
+
+  .pdpa-modal-body p,
+  .pdpa-modal-checkbox {
+    font-size: 0.92rem;
   }
 }

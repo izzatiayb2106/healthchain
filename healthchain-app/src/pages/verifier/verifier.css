@@ -68,7 +68,7 @@
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	gap: 14px;
+	gap: clamp(10px, 2vw, 14px);
 	padding: 8px 0 18px;
 	margin-bottom: 18px;
 	border-bottom: 1px solid rgba(155, 142, 199, 0.18);
@@ -202,13 +202,58 @@
 }
 
 .scanner-reader {
-	width: 98%;
-	min-height: 64px;
-	margin-bottom: 12px;
+	width: min(100%, 560px);
+	aspect-ratio: 1 / 1;
+	min-height: 320px;
+	margin: 0 auto 12px;
 	padding: 10px;
+	box-sizing: border-box;
 	border: 1px dashed rgba(155, 142, 199, 0.34);
-	border-radius: 16px;
+	border-radius: 20px;
 	background: linear-gradient(180deg, rgba(180, 211, 217, 0.14), rgba(242, 234, 224, 0.32));
+	overflow: hidden;
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.scanner-reader::after {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: min(var(--qr-frame-size, 280px), calc(100% - 48px));
+	height: min(var(--qr-frame-size, 280px), calc(100% - 48px));
+	transform: translate(-50%, -50%);
+	border: 2px solid rgba(255, 255, 255, 0.92);
+	border-radius: 18px;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 0 0 9999px rgba(10, 10, 10, 0.14);
+	pointer-events: none;
+	z-index: 3;
+}
+
+.scanner-reader video,
+.scanner-reader canvas {
+	width: 100% !important;
+	height: 100% !important;
+	object-fit: cover;
+}
+
+.scanner-reader video,
+.scanner-reader canvas {
+	border-radius: 14px;
+}
+
+.scanner-reader #verifier-qr-reader__scan_region,
+.scanner-reader #verifier-qr-reader__dashboard,
+.scanner-reader #qr-shaded-region {
+	width: 100% !important;
+	max-width: 100% !important;
+}
+
+.scanner-reader #qr-shaded-region {
+	display: none !important;
 }
 
 .verifier-redeem-form {
@@ -218,7 +263,7 @@
 }
 
 .verifier-redeem-form textarea {
-	width: 98%;
+	width: 100%;
 	min-height: 118px;
 	padding: 12px 14px;
 	border: 1px solid rgba(155, 142, 199, 0.26);
@@ -228,6 +273,7 @@
 	background: rgba(255, 255, 255, 0.92);
 	color: var(--verifier-ink);
 	resize: vertical;
+	box-sizing: border-box;
 	transition: border-color 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
 }
 
@@ -326,6 +372,18 @@
 	border-color: rgba(22, 100, 63, 0.22);
 }
 
+.verification-status-expired {
+	color: #8a5a10;
+	background: #fff6e5;
+	border-color: rgba(138, 90, 16, 0.22);
+}
+
+.verification-status-tampered {
+	color: #7f2630;
+	background: #ffe9ee;
+	border-color: rgba(127, 38, 48, 0.22);
+}
+
 .verification-status-failed {
 	color: #9d3c35;
 	background: #fff0eb;
@@ -351,6 +409,16 @@
 .badge.badge-valid {
 	background: linear-gradient(135deg, #6eb88e, #2f8f5a);
 	box-shadow: 0 10px 18px rgba(47, 143, 90, 0.24);
+}
+
+.badge.badge-expired {
+	background: linear-gradient(135deg, #e0a33a, #b87815);
+	box-shadow: 0 10px 18px rgba(184, 120, 21, 0.24);
+}
+
+.badge.badge-tampered {
+	background: linear-gradient(135deg, #e46b7a, #be3549);
+	box-shadow: 0 10px 18px rgba(190, 53, 73, 0.24);
 }
 
 .badge.badge-failed {
@@ -411,18 +479,123 @@
 		flex-direction: column;
 	}
 
+	.scanner-reader {
+		width: 100%;
+		min-height: 260px;
+		border-radius: 18px;
+	}
+
+	.scanner-reader::after {
+		width: min(var(--qr-frame-size, 240px), calc(100% - 34px));
+		height: min(var(--qr-frame-size, 240px), calc(100% - 34px));
+		border-radius: 16px;
+	}
+
 	.claim-card {
 		padding: 16px;
 	}
 }
 
 @media (max-width: 480px) {
+	.verifier-dashboard {
+		padding: 14px;
+	}
+
 	.verifier-header h1 {
 		font-size: 1.35rem;
+	}
+
+	.verifier-identity,
+	.claim-main-column div,
+	.claim-main-column strong {
+		font-size: 0.86rem;
+	}
+
+	.btn {
+		font-size: 0.88rem;
+		padding: 9px 12px;
 	}
 
 	.verifier-panel,
 	.claim-card {
 		border-radius: 18px;
+	}
+
+	.claim-card {
+		gap: 14px;
+		padding: 14px;
+	}
+
+	.badge {
+		font-size: 0.78rem;
+		padding: 7px 10px;
+	}
+
+	.verifier-redeem-form textarea {
+		min-height: 108px;
+		font-size: 0.86rem;
+	}
+}
+
+@media (max-width: 390px) {
+	.verifier-dashboard {
+		padding: 12px;
+	}
+
+	.verifier-header {
+		gap: 8px;
+	}
+
+	.verifier-header h1 {
+		font-size: 1.2rem;
+	}
+
+	.verifier-identity {
+		flex-direction: column;
+		gap: 6px;
+		font-size: 0.8rem;
+	}
+
+	.scanner-actions {
+		gap: 6px;
+	}
+
+	.scanner-reader {
+		min-height: 240px;
+		padding: 6px;
+	}
+
+	.scanner-reader::after {
+		width: min(var(--qr-frame-size, 220px), calc(100% - 28px));
+		height: min(var(--qr-frame-size, 220px), calc(100% - 28px));
+	}
+
+	.claim-card {
+		padding: 12px;
+		gap: 12px;
+	}
+
+	.patient-name {
+		font-size: 0.96rem;
+	}
+
+	.claim-main-column div {
+		font-size: 0.8rem;
+	}
+
+	.badge {
+		font-size: 0.74rem;
+		padding: 6px 8px;
+	}
+
+	.btn {
+		font-size: 0.82rem;
+		padding: 8px 10px;
+	}
+
+	.verifier-redeem-form textarea {
+		min-height: 100px;
+		font-size: 0.82rem;
+		padding: 10px;
 	}
 }

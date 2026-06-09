@@ -5,6 +5,7 @@ import { getDoctorProfileByDid, upsertDoctorProfile } from "../services/doctorPr
 import { getPatientProfileByDid, getPatientProfileByWallet } from "../services/patientProfileService";
 import { listHybridCredentialsBySubjectDid } from "../services/hybridCredentialService";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
+import { emitEventToWallet } from "../services/eventService";
 import {
   getPendingPatientsByDoctorDid,
   addPendingPatient,
@@ -186,7 +187,15 @@ export default function doctorRoutes() {
           ? patientDidInput
           : patientIdentity.did;
 
-      const recordAdded = addPendingPatient(identity.did, identity.wallet, patientWallet, patientDid);
+      const recordAdded = await addPendingPatient(identity.did, identity.wallet, patientWallet, patientDid);
+      emitEventToWallet(identity.wallet, "pending-patients-updated", {
+        doctorDid: identity.did,
+        doctorWallet: identity.wallet,
+        patientWallet,
+        patientDid,
+        action: "added",
+        updatedAt: recordAdded.updatedAt,
+      });
       return res.status(201).json({ success: true, pendingPatients: recordAdded });
     } catch (error: any) {
       const message = error?.message || "Failed to add pending patient";
@@ -247,6 +256,13 @@ export default function doctorRoutes() {
       }
 
       const updated = await removePendingPatient(identity.did, patientWallet);
+      emitEventToWallet(identity.wallet, "pending-patients-updated", {
+        doctorDid: identity.did,
+        doctorWallet: identity.wallet,
+        patientWallet,
+        action: "removed",
+        updatedAt: new Date().toISOString(),
+      });
       return res.json({ success: true, pendingPatients: updated?.patients || [] });
     } catch (error: any) {
       const message = error?.message || "Failed to remove pending patient";

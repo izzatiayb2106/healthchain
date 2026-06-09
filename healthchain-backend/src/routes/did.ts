@@ -18,6 +18,7 @@ import {
 import { requireAdmin } from "../middleware/adminAuth";
 import { appendAuditLog, listAuditLogs } from "../services/auditLogService";
 import { fundWalletIfNeeded } from "../services/walletFundingService";
+import { emitEventToWallet } from "../services/eventService";
 
 export default function didRoutes(agent: any) {
   const router = express.Router();
@@ -118,10 +119,17 @@ export default function didRoutes(agent: any) {
       }
 
       const updated = await setIdentityLock(wallet, true, reason || 'Locked by admin')
+      emitEventToWallet(updated.wallet, 'account-locked', {
+        wallet: updated.wallet,
+        did: updated.did,
+        locked: true,
+        lockReason: updated.lockReason || null,
+        updatedAt: updated.updatedAt,
+      })
       await appendAuditLog({
         action: 'lock_user',
         role: 'admin',
-        wallet: String(req.header('x-admin-wallet') || '').trim().toLowerCase() || 'unknown',
+        wallet: String(req.user?.wallet || '').trim().toLowerCase(),
         status: 'success',
         details: `Locked ${updated.wallet}`,
         metadata: { targetWallet: updated.wallet, reason: updated.lockReason || null },
@@ -143,10 +151,16 @@ export default function didRoutes(agent: any) {
       }
 
       const updated = await setIdentityLock(wallet, false)
+      emitEventToWallet(updated.wallet, 'account-unlocked', {
+        wallet: updated.wallet,
+        did: updated.did,
+        locked: false,
+        updatedAt: updated.updatedAt,
+      })
       await appendAuditLog({
         action: 'unlock_user',
         role: 'admin',
-        wallet: String(req.header('x-admin-wallet') || '').trim().toLowerCase() || 'unknown',
+        wallet: String(req.user?.wallet || '').trim().toLowerCase(),
         status: 'success',
         details: `Unlocked ${updated.wallet}`,
         metadata: { targetWallet: updated.wallet },

@@ -6,6 +6,7 @@ import { getDoctorProfileByDid } from "../services/doctorProfileService";
 import { addPendingPatient } from "../services/doctorPendingPatientsService";
 import { listHybridCredentialsBySubjectDid } from "../services/hybridCredentialService";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
+import { emitEventToWallet } from "../services/eventService";
 
 function getWalletAuth(req: express.Request) {
   const wallet = String(req.header("x-user-wallet") || "").trim().toLowerCase();
@@ -226,12 +227,21 @@ export default function patientRoutes() {
         return res.status(404).json({ error: "No registered doctor found with that wallet address" });
       }
 
-      addPendingPatient(
+      const updated = await addPendingPatient(
         doctorIdentity.did,
         doctorIdentity.wallet,
         patientIdentity.wallet,
         patientIdentity.did
       );
+
+      emitEventToWallet(doctorIdentity.wallet, "pending-patients-updated", {
+        doctorDid: doctorIdentity.did,
+        doctorWallet: doctorIdentity.wallet,
+        patientWallet: patientIdentity.wallet,
+        patientDid: patientIdentity.did,
+        action: "added",
+        updatedAt: updated.updatedAt,
+      });
 
       return res.status(201).json({ success: true, doctorDid: doctorIdentity.did });
     } catch (error: any) {
