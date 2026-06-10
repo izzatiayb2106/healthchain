@@ -1099,7 +1099,7 @@ const PatientDashboard: React.FC = () => {
 			{activeSection === 'blockchain' ? (
 				<section className="patient-card blockchain-panel">
 					<h2>Blockchain Anchoring Trail</h2>
-					<p>Live view of finalized anchors. Each row maps a finalized hybrid credential to the block that included its transaction.</p>
+					<p>Each row maps credential to the block that included its transaction.</p>
 					<div className="blockchain-summary">
 						<div className="blockchain-summary-item">
 							<span className="blockchain-summary-label">RPC Server</span>

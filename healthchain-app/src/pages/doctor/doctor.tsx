@@ -90,6 +90,32 @@ const DoctorDashboard: React.FC = () => {
     const [showCredentialResultModal, setShowCredentialResultModal] = useState(false);
     const [credentialResultData, setCredentialResultData] = useState<any>(null);
     const [walletCopyStatus, setWalletCopyStatus] = useState<string | null>(null);
+    const [pendingPatientSearch, setPendingPatientSearch] = useState('');
+
+        const walletCopyButtonStyle: React.CSSProperties = {
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                whiteSpace: 'nowrap',
+                width: 'fit-content',
+                minWidth: '176px',
+                minHeight: '44px',
+                padding: '12px 18px',
+                border: 'none',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, var(--doctor-lilac), var(--doctor-plum))',
+                color: '#fff',
+                boxShadow: '0 12px 24px rgba(131, 118, 180, 0.26)',
+                fontWeight: 800,
+                fontSize: '0.92rem',
+                lineHeight: 1,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                alignSelf: 'flex-start',
+            };
 
     const isValidAvatarUrl = (value: string) => {
         if (!value.trim()) return true;
@@ -231,6 +257,14 @@ const DoctorDashboard: React.FC = () => {
 
         window.setTimeout(() => setWalletCopyStatus(null), 1800);
     };
+
+    const filteredPendingPatients = pendingPatients.filter((patient) => {
+        const search = pendingPatientSearch.trim().toLowerCase();
+        if (!search) return true;
+
+        const name = String(patient.patientName || '').toLowerCase();
+        return name.includes(search);
+    });
 
     const removePatient = async (patientWallet: string) => {
         const wallet = String(patientWallet || '').trim().toLowerCase();
@@ -784,7 +818,12 @@ const DoctorDashboard: React.FC = () => {
                     </div>
                     <div className="wallet-copy-row">
                         
-                        <button className="btn wallet-copy-btn" onClick={copyDoctorWallet} disabled={!profile?.wallet || profileLoading}>
+                        <button
+                            className="btn wallet-copy-btn"
+                            style={walletCopyButtonStyle}
+                            onClick={copyDoctorWallet}
+                            disabled={!profile?.wallet || profileLoading}
+                        >
                             {walletCopyStatus || 'Copy Wallet Address'}
                         </button>
                     </div>
@@ -792,9 +831,26 @@ const DoctorDashboard: React.FC = () => {
 
                 {pendingPatients.length > 0 ? (
                     <div className="pending-patients-section">
-                        <h3>Patients ({pendingPatients.length})</h3>
+                        <div className="pending-patients-header">
+                            <h3>
+                                Patients {pendingPatientSearch.trim() ? `(${filteredPendingPatients.length} of ${pendingPatients.length})` : `(${pendingPatients.length})`}
+                            </h3>
+                            <div className="patient-search-wrap">
+                                <label className="patient-search-label" htmlFor="pending-patient-search">
+                                    Search by name
+                                </label>
+                                <input
+                                    id="pending-patient-search"
+                                    className="patient-search-input"
+                                    type="search"
+                                    placeholder="Type a patient name..."
+                                    value={pendingPatientSearch}
+                                    onChange={(e) => setPendingPatientSearch(e.target.value)}
+                                />
+                            </div>
+                        </div>
                         <div className="patients-list">
-                            {pendingPatients.map((patient) => (
+                            {filteredPendingPatients.map((patient) => (
                                 <div
                                     key={patient.patientWallet}
                                     className={`patient-card ${selectedPatient?.wallet === patient.patientWallet ? 'selected' : ''}`}
@@ -827,6 +883,9 @@ const DoctorDashboard: React.FC = () => {
                                 </div>
                             ))}
                         </div>
+                        {filteredPendingPatients.length === 0 ? (
+                            <p className="pending-patients-empty">No patients match that name.</p>
+                        ) : null}
                     </div>
                 ) : null}
 

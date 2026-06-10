@@ -24,6 +24,7 @@
 	overflow: hidden;
 	font-family: "Avenir Next", "Nunito Sans", "Segoe UI", sans-serif;
 	max-width: 1500px;
+	min-height: 100vh;
 	margin: 0px auto;
 	padding: 28px;
 	color: var(--patient-ink);

@@ -69,6 +69,7 @@ const AdminDashboard: React.FC = () => {
   const [lockReasonModalOpen, setLockReasonModalOpen] = useState(false);
   const [selectedWalletForLock, setSelectedWalletForLock] = useState<string | null>(null);
   const [lockReasonInput, setLockReasonInput] = useState<string>("");
+  const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
 
   const canAccess = useMemo(() => {
     return (localStorage.getItem("hc_role") || "").toLowerCase() === "admin";
@@ -80,6 +81,27 @@ const AdminDashboard: React.FC = () => {
       return acc;
     }, {});
   }, [rows]);
+
+  const formatWalletAddress = (wallet: string) => {
+    const value = String(wallet || "").trim();
+    if (value.length <= 10) return value;
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  };
+
+  const copyWalletAddress = async (wallet: string) => {
+    const value = String(wallet || "").trim();
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedWallet(value);
+      window.setTimeout(() => {
+        setCopiedWallet((current) => (current === value ? null : current));
+      }, 1200);
+    } catch (error) {
+      console.error("Failed to copy wallet address:", error);
+    }
+  };
 
   const resolveAuditLogName = (entry: AuditLogEntry) => {
     if (entry.role === "system") return "System";
@@ -301,7 +323,20 @@ const AdminDashboard: React.FC = () => {
                     <tbody>
                       {rows.map((row) => (
                         <tr key={row.wallet}>
-                          <td className="wallet" title={row.wallet}>{row.wallet}</td>
+                          <td className="wallet" title={row.wallet}>
+                            <div className="wallet-cell">
+                              <span className="wallet-address">{formatWalletAddress(row.wallet)}</span>
+                              <button
+                                type="button"
+                                className={`wallet-copy-btn ${copiedWallet === row.wallet ? "copied" : ""}`}
+                                onClick={() => void copyWalletAddress(row.wallet)}
+                                aria-label="Copy full wallet address"
+                                title="Copy full wallet address"
+                              >
+                                {copiedWallet === row.wallet ? "✓" : "⧉"}
+                              </button>
+                            </div>
+                          </td>
                           <td className="name" title={row.displayName || row.did}>
                             {row.displayName ? row.displayName : row.role === "admin" ? "Administrator" : row.did}
                           </td>
@@ -366,7 +401,7 @@ const AdminDashboard: React.FC = () => {
               </div>
             ) : null}
 
-            {activeSection === "audit" ? <h2 className="section-title">Audit Log</h2> : null}
+            {activeSection === "audit" ? <h2 className="section-title"></h2> : null}
             {activeSection === "audit" ? (
               <div className="audit-controls">
                 <label>
@@ -437,7 +472,9 @@ const AdminDashboard: React.FC = () => {
                   <h2>Lock User Account</h2>
                   <p style={{ marginTop: 12, color: 'var(--doctor-muted)' }}>
                     <strong>Wallet:</strong><br />
-                    <span style={{ wordBreak: 'break-all', fontSize: '0.9em' }}>{selectedWalletForLock}</span>
+                    <span style={{ wordBreak: 'break-all', fontSize: '0.9em' }} title={selectedWalletForLock || undefined}>
+                      {selectedWalletForLock ? formatWalletAddress(selectedWalletForLock) : ''}
+                    </span>
                   </p>
                   <div style={{ marginTop: 16 }}>
                     <label htmlFor="lock-reason-input">

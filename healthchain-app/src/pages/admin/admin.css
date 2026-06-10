@@ -425,6 +425,57 @@
   color: #5f5873;
 }
 
+.wallet-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.wallet-address {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wallet-copy-btn {
+  all: unset;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex: 0 0 18px;
+  border: 1px solid rgba(155, 142, 199, 0.22);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #6b6181;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.58rem;
+  line-height: 1;
+  box-sizing: border-box;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.wallet-copy-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(155, 142, 199, 0.38);
+  box-shadow: 0 8px 16px rgba(78, 65, 108, 0.12);
+  background: #fff;
+}
+
+.wallet-copy-btn.copied {
+  border-color: rgba(95, 159, 134, 0.34);
+  background: rgba(212, 245, 232, 0.9);
+  color: #0d5f3f;
+}
+
+.wallet-copy-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(155, 142, 199, 0.16);
+}
+
 .lock-reason {
   margin-top: 8px;
   max-width: 220px;
